@@ -695,16 +695,32 @@ func TestTestfill(t *testing.T) {
 				require.Equal(t, UnsupportedStructMap{}, result)
 			})
 
-			t.Run("invalid struct map value syntax", func(t *testing.T) {
-				type InvalidStructMap struct {
-					Value map[string]Bar `testfill:"key1:invalid,key2:fill"`
+			t.Run("struct map with variant names", func(t *testing.T) {
+				type TestStruct struct {
+					Integer int    `testfill:"42" testfill_variant1:"100"`
+					String  string `testfill:"Olivie Smith" testfill_variant1:"John Doe"`
 				}
 
-				result, err := testfill.Fill(InvalidStructMap{})
+				type StructMapWithVariants struct {
+					Value map[string]TestStruct `testfill:"key1:variant1,key2:fill"`
+				}
 
-				expectedError := "testfill: failed to set field Value: struct map values must use 'fill' syntax, got: invalid"
-				require.EqualError(t, err, expectedError)
-				require.Equal(t, InvalidStructMap{}, result)
+				result, err := testfill.Fill(StructMapWithVariants{})
+				require.NoError(t, err)
+
+				require.Len(t, result.Value, 2)
+
+				// key1 should use variant1
+				struct1, exists := result.Value["key1"]
+				require.True(t, exists)
+				require.Equal(t, 100, struct1.Integer)
+				require.Equal(t, "John Doe", struct1.String)
+
+				// key2 should use default (fill)
+				struct2, exists := result.Value["key2"]
+				require.True(t, exists)
+				require.Equal(t, 42, struct2.Integer)
+				require.Equal(t, "Olivie Smith", struct2.String)
 			})
 
 			t.Run("struct map with invalid format missing colon", func(t *testing.T) {
@@ -1526,6 +1542,215 @@ func TestTestfill(t *testing.T) {
 			require.Len(t, result.Users, 1)
 			require.Equal(t, "CustomName", result.Users[0].Name) // Preserved
 			require.Equal(t, 0, result.Users[0].Age)             // Not filled since slice was pre-existing
+		})
+
+		t.Run("map with custom key=variant pairs", func(t *testing.T) {
+			type User struct {
+				Name string `testfill:"John" testfill_admin:"Jane" testfill_guest:"Bob"`
+				Age  int    `testfill:"25" testfill_admin:"30" testfill_guest:"35"`
+				Role string `testfill:"user" testfill_admin:"admin" testfill_guest:"guest"`
+			}
+
+			type UserMap struct {
+				Users map[string]User `testfill:"variants:regular_user=default,system_admin=admin,site_visitor=guest"`
+			}
+
+			result, err := testfill.Fill(UserMap{})
+			require.NoError(t, err)
+
+			require.Len(t, result.Users, 3)
+
+			// regular_user should have default variant
+			regularUser, exists := result.Users["regular_user"]
+			require.True(t, exists)
+			require.Equal(t, "John", regularUser.Name)
+			require.Equal(t, 25, regularUser.Age)
+			require.Equal(t, "user", regularUser.Role)
+
+			// system_admin should have admin variant
+			systemAdmin, exists := result.Users["system_admin"]
+			require.True(t, exists)
+			require.Equal(t, "Jane", systemAdmin.Name)
+			require.Equal(t, 30, systemAdmin.Age)
+			require.Equal(t, "admin", systemAdmin.Role)
+
+			// site_visitor should have guest variant
+			siteVisitor, exists := result.Users["site_visitor"]
+			require.True(t, exists)
+			require.Equal(t, "Bob", siteVisitor.Name)
+			require.Equal(t, 35, siteVisitor.Age)
+			require.Equal(t, "guest", siteVisitor.Role)
+		})
+
+		t.Run("map with mixed custom keys and whitespace", func(t *testing.T) {
+			type User struct {
+				Name string `testfill:"John" testfill_admin:"Jane"`
+				Role string `testfill:"user" testfill_admin:"admin"`
+			}
+
+			type UserMap struct {
+				Users map[string]User `testfill:"variants: primary_user = default , admin_user = admin "`
+			}
+
+			result, err := testfill.Fill(UserMap{})
+			require.NoError(t, err)
+
+			require.Len(t, result.Users, 2)
+
+			primaryUser, exists := result.Users["primary_user"]
+			require.True(t, exists)
+			require.Equal(t, "John", primaryUser.Name)
+			require.Equal(t, "user", primaryUser.Role)
+
+			adminUser, exists := result.Users["admin_user"]
+			require.True(t, exists)
+			require.Equal(t, "Jane", adminUser.Name)
+			require.Equal(t, "admin", adminUser.Role)
+		})
+
+		t.Run("map with invalid key=variant format", func(t *testing.T) {
+			type User struct {
+				Name string `testfill:"John"`
+			}
+
+			type UserMap struct {
+				Users map[string]User `testfill:"variants:key1=admin,invalid_format,key3=guest"`
+			}
+
+			result, err := testfill.Fill(UserMap{})
+
+			expectedError := "testfill: failed to set field Users: invalid key=variant format: invalid_format (expected format: key=variant)"
+			require.EqualError(t, err, expectedError)
+			require.Equal(t, UserMap{}, result)
+		})
+
+		t.Run("map with custom keys and partial variant coverage", func(t *testing.T) {
+			type User struct {
+				Name string `testfill:"John" testfill_admin:"Jane"`                         // Only has admin variant
+				Age  int    `testfill:"25"`                                                 // Only has default
+				Role string `testfill:"user" testfill_admin:"admin" testfill_guest:"guest"` // Has all variants
+			}
+
+			type UserMap struct {
+				Users map[string]User `testfill:"variants:main_user=default,power_user=admin,visitor=guest"`
+			}
+
+			result, err := testfill.Fill(UserMap{})
+			require.NoError(t, err)
+
+			require.Len(t, result.Users, 3)
+
+			// main_user with default variant
+			mainUser, exists := result.Users["main_user"]
+			require.True(t, exists)
+			require.Equal(t, "John", mainUser.Name)
+			require.Equal(t, 25, mainUser.Age)
+			require.Equal(t, "user", mainUser.Role)
+
+			// power_user with admin variant
+			powerUser, exists := result.Users["power_user"]
+			require.True(t, exists)
+			require.Equal(t, "Jane", powerUser.Name)
+			require.Equal(t, 25, powerUser.Age) // Falls back to default
+			require.Equal(t, "admin", powerUser.Role)
+
+			// visitor with guest variant
+			visitor, exists := result.Users["visitor"]
+			require.True(t, exists)
+			require.Equal(t, "John", visitor.Name) // Falls back to default
+			require.Equal(t, 25, visitor.Age)      // Falls back to default
+			require.Equal(t, "guest", visitor.Role)
+		})
+
+		t.Run("map with specific key-variant pairs", func(t *testing.T) {
+			type User struct {
+				Name string `testfill:"John" testfill_admin:"Jane" testfill_guest:"Bob"`
+				Role string `testfill:"user" testfill_admin:"admin" testfill_guest:"guest"`
+			}
+
+			type UserMap struct {
+				Users map[string]User `testfill:"alice:admin,bob:guest,charlie:default"`
+			}
+
+			result, err := testfill.Fill(UserMap{})
+			require.NoError(t, err)
+
+			require.Len(t, result.Users, 3)
+
+			// alice should have admin variant
+			alice, exists := result.Users["alice"]
+			require.True(t, exists)
+			require.Equal(t, "Jane", alice.Name)
+			require.Equal(t, "admin", alice.Role)
+
+			// bob should have guest variant
+			bob, exists := result.Users["bob"]
+			require.True(t, exists)
+			require.Equal(t, "Bob", bob.Name)
+			require.Equal(t, "guest", bob.Role)
+
+			// charlie should have default variant
+			charlie, exists := result.Users["charlie"]
+			require.True(t, exists)
+			require.Equal(t, "John", charlie.Name)
+			require.Equal(t, "user", charlie.Role)
+		})
+
+		t.Run("map compatibility with fill syntax", func(t *testing.T) {
+			type User struct {
+				Name string `testfill:"John"`
+				Age  int    `testfill:"25"`
+			}
+
+			type UserMap struct {
+				Users map[string]User `testfill:"user1:fill,user2:fill"`
+			}
+
+			result, err := testfill.Fill(UserMap{})
+			require.NoError(t, err)
+
+			require.Len(t, result.Users, 2)
+
+			user1, exists := result.Users["user1"]
+			require.True(t, exists)
+			require.Equal(t, "John", user1.Name)
+			require.Equal(t, 25, user1.Age)
+
+			user2, exists := result.Users["user2"]
+			require.True(t, exists)
+			require.Equal(t, "John", user2.Name)
+			require.Equal(t, 25, user2.Age)
+		})
+
+		t.Run("map with partial variant coverage", func(t *testing.T) {
+			type User struct {
+				Name string `testfill:"John" testfill_admin:"Jane"`                         // Only has admin variant
+				Age  int    `testfill:"25"`                                                 // Only has default
+				Role string `testfill:"user" testfill_admin:"admin" testfill_guest:"guest"` // Has all variants
+			}
+
+			type UserMap struct {
+				Users map[string]User `testfill:"user1:admin,user2:guest"`
+			}
+
+			result, err := testfill.Fill(UserMap{})
+			require.NoError(t, err)
+
+			require.Len(t, result.Users, 2)
+
+			// user1 with admin variant
+			user1, exists := result.Users["user1"]
+			require.True(t, exists)
+			require.Equal(t, "Jane", user1.Name)
+			require.Equal(t, 25, user1.Age) // Falls back to default
+			require.Equal(t, "admin", user1.Role)
+
+			// user2 with guest variant
+			user2, exists := result.Users["user2"]
+			require.True(t, exists)
+			require.Equal(t, "John", user2.Name) // Falls back to default
+			require.Equal(t, 25, user2.Age)      // Falls back to default
+			require.Equal(t, "guest", user2.Role)
 		})
 	})
 

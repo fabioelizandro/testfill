@@ -163,10 +163,6 @@ func getTagValueForVariant(fieldType reflect.StructField, variant string) string
 // Nested struct handling
 // =====================================================
 
-func handleNestedFill(field reflect.Value, fieldType reflect.StructField) error {
-	return handleNestedFillWithVariant(field, fieldType, "")
-}
-
 func handleNestedFillWithVariant(field reflect.Value, fieldType reflect.StructField, variant string) error {
 	switch field.Kind() {
 	case reflect.Struct:
@@ -335,6 +331,11 @@ func setStructMapValue(field reflect.Value, tag string, keyType, valueType refle
 		return fmt.Errorf(ErrUnsupportedMapType, keyType.Kind(), valueType.Kind())
 	}
 
+	// Check if this is a variants syntax
+	if strings.HasPrefix(tag, "variants:") {
+		return setStructMapWithVariants(field, tag, valueType)
+	}
+
 	m := reflect.MakeMap(field.Type())
 	pairs := strings.Split(tag, ",")
 
@@ -350,15 +351,56 @@ func setStructMapValue(field reflect.Value, tag string, keyType, valueType refle
 		keyValue := reflect.ValueOf(keyStr)
 
 		if valueStr == "fill" {
-			// Create and fill a new struct instance
+			// Create and fill a new struct instance with default variant
 			structValue := reflect.New(valueType).Elem()
-			if err := fillStruct(structValue); err != nil {
+			if err := fillStructWithVariant(structValue, ""); err != nil {
 				return fmt.Errorf("failed to fill map value for key %s: %w", keyStr, err)
 			}
 			m.SetMapIndex(keyValue, structValue)
 		} else {
-			return fmt.Errorf("struct map values must use 'fill' syntax, got: %s", valueStr)
+			// Assume valueStr is a variant name
+			structValue := reflect.New(valueType).Elem()
+			if err := fillStructWithVariant(structValue, valueStr); err != nil {
+				return fmt.Errorf("failed to fill map value for key %s with variant %s: %w", keyStr, valueStr, err)
+			}
+			m.SetMapIndex(keyValue, structValue)
 		}
+	}
+
+	field.Set(m)
+	return nil
+}
+
+func setStructMapWithVariants(field reflect.Value, tag string, valueType reflect.Type) error {
+	// Extract variants from "variants:key1=variant1,key2=variant2,..." syntax
+	variantStr := strings.TrimPrefix(tag, "variants:")
+	items := strings.Split(variantStr, ",")
+
+	// Clean up items
+	for i, item := range items {
+		items[i] = strings.TrimSpace(item)
+	}
+
+	m := reflect.MakeMap(field.Type())
+
+	for _, item := range items {
+		// All items must use key=variant syntax
+		kv := strings.Split(item, "=")
+		if len(kv) != 2 {
+			return fmt.Errorf("invalid key=variant format: %s (expected format: key=variant)", item)
+		}
+
+		keyStr := strings.TrimSpace(kv[0])
+		variant := strings.TrimSpace(kv[1])
+
+		keyValue := reflect.ValueOf(keyStr)
+
+		// Create and fill struct with the specified variant
+		structValue := reflect.New(valueType).Elem()
+		if err := fillStructWithVariant(structValue, variant); err != nil {
+			return fmt.Errorf("failed to fill map value for key %s with variant %s: %w", keyStr, variant, err)
+		}
+		m.SetMapIndex(keyValue, structValue)
 	}
 
 	field.Set(m)

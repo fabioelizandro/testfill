@@ -168,6 +168,8 @@ userList, _ := testfill.Fill(UserList{})
 - If a variant doesn't exist for a field, falls back to the default `testfill` tag
 - Supports nested structs - variant selection propagates to nested fields
 - Handles partial variant coverage gracefully
+- **Slices**: Use `variants:name1,name2,name3` for auto-indexed items
+- **Maps**: Use `variants:key1=variant1,key2=variant2` for custom keys with explicit naming
 
 #### Primitive Maps
 ```go
@@ -190,6 +192,32 @@ type UserMap struct {
 
 userMap, _ := testfill.Fill(UserMap{})
 // Result: {Users:map[admin:{Name:User Age:25} guest:{Name:User Age:25}]}
+```
+
+#### Struct Value Maps with Variants
+Maps can also use named variants to create different struct values:
+
+```go
+type User struct {
+    Name string `testfill:"John" testfill_admin:"Jane" testfill_guest:"Bob"`
+    Role string `testfill:"user" testfill_admin:"admin" testfill_guest:"guest"`
+}
+
+// Option 1: Custom keys with key=variant syntax
+type UserMap1 struct {
+    Users map[string]User `testfill:"variants:regular_user=default,system_admin=admin,site_visitor=guest"`
+}
+
+userMap1, _ := testfill.Fill(UserMap1{})
+// Result: {Users:map[regular_user:{Name:John Role:user} system_admin:{Name:Jane Role:admin} site_visitor:{Name:Bob Role:guest}]}
+
+// Option 2: Specific keys with direct variant assignment
+type UserMap2 struct {
+    Users map[string]User `testfill:"alice:admin,bob:guest,charlie:default"`
+}
+
+userMap2, _ := testfill.Fill(UserMap2{})
+// Result: {Users:map[alice:{Name:Jane Role:admin} bob:{Name:Bob Role:guest} charlie:{Name:John Role:user}]}
 ```
 
 ### Time Values
@@ -372,8 +400,8 @@ Common error scenarios:
 
 ## Limitations
 
-- Struct value maps only support string keys (use `key:fill` syntax)  
-- Struct slices support either `fill:count` for identical instances or `variants:name1,name2,name3` for different field values
+- Struct value maps only support string keys (use `key:fill`, `key:variant_name`, or `variants:name1,name2,name3` syntax)
+- Struct slices and maps support either `fill:count`/`key:fill` for identical instances or variants for different field values
 - Interface fields cannot be filled
 - Channels and functions are not supported
 - Unexported fields are ignored
