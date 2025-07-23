@@ -213,7 +213,14 @@ func setTimeValue(field reflect.Value, tag string) error {
 	return nil
 }
 
-func callFactoryFunction(field reflect.Value, fieldType reflect.StructField, factoryTag string) error {
+func callFactoryFunction(field reflect.Value, fieldType reflect.StructField, factoryTag string) (err error) {
+	// Recover from panics in factory functions
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("factory function panicked: %v", r)
+		}
+	}()
+
 	// Parse factory name and arguments from tag
 	// Format: "FunctionName" or "FunctionName:arg1:arg2..."
 	parts := strings.Split(factoryTag, ":")

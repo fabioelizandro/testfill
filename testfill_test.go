@@ -71,6 +71,11 @@ func TestTestfill(t *testing.T) {
 		return t.UTC()
 	})
 
+	// Register a factory that panics for testing
+	testfill.RegisterFactory("PanicFactory", func() CustomVO {
+		panic("this factory always panics")
+	})
+
 	t.Run("integers", func(t *testing.T) {
 		t.Run("fills default value", func(t *testing.T) {
 			foo, err := testfill.Fill(Foo{})
@@ -395,6 +400,20 @@ func TestTestfill(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, customTime, foo.TimeWithRFCFactory)
+		})
+	})
+
+	t.Run("factory function error handling", func(t *testing.T) {
+		t.Run("when factory function panics returns error", func(t *testing.T) {
+			type PanicTest struct {
+				CustomVOWithPanic CustomVO `testfill:"factory:PanicFactory"`
+			}
+
+			result, err := testfill.Fill(PanicTest{})
+
+			expectedError := "testfill: failed to set field CustomVOWithPanic: factory function panicked: this factory always panics"
+			require.EqualError(t, err, expectedError)
+			require.Equal(t, PanicTest{}, result)
 		})
 	})
 }
