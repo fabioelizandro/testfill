@@ -1353,4 +1353,123 @@ func TestTestfill(t *testing.T) {
 			require.Nil(t, result)
 		})
 	})
+
+	t.Run("json unmarshal", func(t *testing.T) {
+		t.Run("various types", func(t *testing.T) {
+			type TestJSON struct {
+				String    string         `testfill:"unmarshal:\"hello world\""`
+				Int       int            `testfill:"unmarshal:42"`
+				Float     float64        `testfill:"unmarshal:99.99"`
+				Bool      bool           `testfill:"unmarshal:true"`
+				StringPtr *string        `testfill:"unmarshal:\"hello\""`
+				NullPtr   *string        `testfill:"unmarshal:null"`
+				Slice     []string       `testfill:"unmarshal:[\"a\",\"b\",\"c\"]"`
+				Map       map[string]int `testfill:"unmarshal:{\"x\":1,\"y\":2}"`
+				Interface interface{}    `testfill:"unmarshal:{\"key\":\"value\"}"`
+				Time      time.Time      `testfill:"unmarshal:\"2024-01-15T10:30:00Z\""`
+			}
+
+			result, err := testfill.Fill(TestJSON{})
+			require.NoError(t, err)
+
+			// Verify all fields
+			require.Equal(t, "hello world", result.String)
+			require.Equal(t, 42, result.Int)
+			require.Equal(t, 99.99, result.Float)
+			require.Equal(t, true, result.Bool)
+			require.NotNil(t, result.StringPtr)
+			require.Equal(t, "hello", *result.StringPtr)
+			require.Nil(t, result.NullPtr)
+			require.Equal(t, []string{"a", "b", "c"}, result.Slice)
+			require.Equal(t, map[string]int{"x": 1, "y": 2}, result.Map)
+
+			m, ok := result.Interface.(map[string]interface{})
+			require.True(t, ok)
+			require.Equal(t, "value", m["key"])
+
+			expected, _ := time.Parse(time.RFC3339, "2024-01-15T10:30:00Z")
+			require.Equal(t, expected, result.Time)
+		})
+
+		t.Run("complex struct", func(t *testing.T) {
+			type Address struct {
+				Street string `json:"street"`
+				City   string `json:"city"`
+			}
+			type Person struct {
+				Name    string   `json:"name"`
+				Age     int      `json:"age"`
+				Address Address  `json:"address"`
+				Tags    []string `json:"tags"`
+			}
+			type TestStruct struct {
+				Person Person `testfill:"unmarshal:{\"name\":\"Alice\",\"age\":30,\"address\":{\"street\":\"123 Main\",\"city\":\"NYC\"},\"tags\":[\"dev\",\"lead\"]}"`
+			}
+
+			result, err := testfill.Fill(TestStruct{})
+			require.NoError(t, err)
+
+			require.Equal(t, "Alice", result.Person.Name)
+			require.Equal(t, 30, result.Person.Age)
+			require.Equal(t, "123 Main", result.Person.Address.Street)
+			require.Equal(t, "NYC", result.Person.Address.City)
+			require.Equal(t, []string{"dev", "lead"}, result.Person.Tags)
+		})
+
+		t.Run("preserves existing values", func(t *testing.T) {
+			type TestPreserve struct {
+				Value string  `testfill:"unmarshal:\"new\""`
+				Ptr   *string `testfill:"unmarshal:\"new\""`
+			}
+
+			existing := "existing"
+			input := TestPreserve{
+				Value: "existing",
+				Ptr:   &existing,
+			}
+
+			result, err := testfill.Fill(input)
+			require.NoError(t, err)
+			require.Equal(t, "existing", result.Value)
+			require.Equal(t, "existing", *result.Ptr)
+		})
+
+		t.Run("error cases", func(t *testing.T) {
+			tests := []struct {
+				name     string
+				input    interface{}
+				errorMsg string
+			}{
+				{
+					name: "invalid JSON",
+					input: struct {
+						Value map[string]string `testfill:"unmarshal:{invalid}"`
+					}{},
+					errorMsg: "failed to unmarshal JSON",
+				},
+				{
+					name: "type mismatch",
+					input: struct {
+						Value int `testfill:"unmarshal:\"not a number\""`
+					}{},
+					errorMsg: "failed to unmarshal JSON",
+				},
+				{
+					name: "invalid array element",
+					input: struct {
+						Value []int `testfill:"unmarshal:[1,\"two\",3]"`
+					}{},
+					errorMsg: "failed to unmarshal JSON",
+				},
+			}
+
+			for _, tt := range tests {
+				t.Run(tt.name, func(t *testing.T) {
+					_, err := testfill.Fill(tt.input)
+					require.Error(t, err)
+					require.Contains(t, err.Error(), tt.errorMsg)
+				})
+			}
+		})
+	})
 }

@@ -1,6 +1,7 @@
 package testfill
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -10,9 +11,10 @@ import (
 
 // Tag constants
 const (
-	TagName    = "testfill"
-	TagFill    = "fill"
-	TagFactory = "factory:"
+	TagName      = "testfill"
+	TagFill      = "fill"
+	TagFactory   = "factory:"
+	TagUnmarshal = "unmarshal:"
 )
 
 // Error messages
@@ -34,6 +36,7 @@ const (
 	ErrFactoryArgConvert    = "factory function %s argument %d: %w"
 	ErrStringConvert        = "cannot convert %q to %s: %w"
 	ErrUnsupportedParam     = "unsupported parameter type %s for factory function arguments"
+	ErrJSONUnmarshal        = "failed to unmarshal JSON: %w"
 )
 
 // =====================================================
@@ -162,6 +165,12 @@ func handleNestedFill(field reflect.Value, fieldType reflect.StructField) error 
 // =====================================================
 
 func setFieldValue(field reflect.Value, _ reflect.StructField, tag string) error {
+	// Handle JSON unmarshal
+	if strings.HasPrefix(tag, TagUnmarshal) {
+		jsonData := strings.TrimPrefix(tag, TagUnmarshal)
+		return unmarshalJSON(field, jsonData)
+	}
+
 	// Handle factory functions
 	if strings.HasPrefix(tag, TagFactory) {
 		factoryTag := strings.TrimPrefix(tag, TagFactory)
@@ -479,4 +488,44 @@ func convertStringToType(arg string, targetType reflect.Type) (reflect.Value, er
 	}
 
 	return reflect.ValueOf(val).Convert(targetType), nil
+}
+
+// =====================================================
+// JSON unmarshal support
+// =====================================================
+
+func unmarshalJSON(field reflect.Value, jsonData string) error {
+	if field.Kind() == reflect.Ptr {
+		if jsonData == "null" {
+			field.Set(reflect.Zero(field.Type()))
+			return nil
+		}
+
+		if field.IsNil() {
+			field.Set(reflect.New(field.Type().Elem()))
+		}
+
+		// Unmarshal into the pointed value
+		return unmarshalJSONValue(field.Interface(), jsonData)
+	}
+
+	// For non-pointer types, we need to unmarshal into the address
+	if field.CanAddr() {
+		return unmarshalJSONValue(field.Addr().Interface(), jsonData)
+	}
+
+	// If we can't get the address, create a new value, unmarshal, and set
+	newValue := reflect.New(field.Type())
+	if err := unmarshalJSONValue(newValue.Interface(), jsonData); err != nil {
+		return err
+	}
+	field.Set(newValue.Elem())
+	return nil
+}
+
+func unmarshalJSONValue(target interface{}, jsonData string) error {
+	if err := json.Unmarshal([]byte(jsonData), target); err != nil {
+		return fmt.Errorf(ErrJSONUnmarshal, err)
+	}
+	return nil
 }

@@ -8,6 +8,7 @@ A Go library for automatically filling struct fields with test data based on str
 - 🔧 **Zero-value preservation** - Only fills fields that are zero-valued
 - 🏭 **Factory functions** - Register custom functions for complex type initialization
 - 🪆 **Nested struct support** - Recursively fill nested structs with the `fill` tag
+- 📋 **JSON unmarshaling** - Populate fields from JSON data with the `unmarshal:` prefix
 - 🎯 **Type safety** - Full type checking at compile time with generics
 - ⚡ **Simple API** - Just one function call to fill your structs
 
@@ -172,6 +173,59 @@ type Event struct {
 
 event, _ := testfill.Fill(Event{})
 // Result: {Name:Conference StartTime:2024-01-15 10:30:00 +0000 UTC}
+```
+
+### JSON Unmarshaling
+
+Use the `unmarshal:` prefix to populate fields from JSON data:
+
+#### Basic Types
+```go
+type Config struct {
+    Settings map[string]interface{} `testfill:"unmarshal:{\"theme\":\"dark\",\"fontSize\":14}"`
+    Tags     []string              `testfill:"unmarshal:[\"go\",\"testing\",\"automation\"]"`
+}
+
+config, _ := testfill.Fill(Config{})
+// Result: Settings contains {"theme": "dark", "fontSize": 14}, Tags contains ["go", "testing", "automation"]
+```
+
+#### Complex Structures
+```go
+type User struct {
+    Name string `json:"name"`
+    Age  int    `json:"age"`
+}
+
+type Team struct {
+    Lead    User                   `testfill:"unmarshal:{\"name\":\"Alice\",\"age\":30}"`
+    Members []User                 `testfill:"unmarshal:[{\"name\":\"Bob\",\"age\":25},{\"name\":\"Carol\",\"age\":28}]"`
+    Config  map[string]interface{} `testfill:"unmarshal:{\"maxSize\":10,\"isActive\":true}"`
+}
+
+team, _ := testfill.Fill(Team{})
+// Result: Fully populated team with JSON data
+```
+
+#### Interface{} Fields
+```go
+type Dynamic struct {
+    Data interface{} `testfill:"unmarshal:{\"type\":\"user\",\"id\":123,\"roles\":[\"admin\",\"user\"]}"`
+}
+
+dynamic, _ := testfill.Fill(Dynamic{})
+// Result: Data contains a map with the JSON structure
+```
+
+#### Null Values
+```go
+type Nullable struct {
+    OptionalName *string `testfill:"unmarshal:null"`
+    RequiredName *string `testfill:"unmarshal:\"John\""`
+}
+
+nullable, _ := testfill.Fill(Nullable{})
+// Result: OptionalName is nil, RequiredName points to "John"
 ```
 
 ## Factory Functions
