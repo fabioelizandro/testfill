@@ -552,6 +552,21 @@ func TestTestfill(t *testing.T) {
 				require.EqualError(t, err, expectedError)
 				require.Equal(t, InvalidIntSlice{}, result)
 			})
+
+			t.Run("struct slice with element fill error", func(t *testing.T) {
+				type StructWithError struct {
+					InvalidField int `testfill:"not_a_number"`
+				}
+				type SliceWithError struct {
+					Value []StructWithError `testfill:"fill:2"`
+				}
+
+				result, err := testfill.Fill(SliceWithError{})
+
+				expectedError := "testfill: failed to set field Value: failed to fill slice element 0: testfill: failed to set field InvalidField: cannot convert \"not_a_number\" to int: strconv.ParseInt: parsing \"not_a_number\": invalid syntax"
+				require.EqualError(t, err, expectedError)
+				require.Equal(t, SliceWithError{}, result)
+			})
 		})
 	})
 
@@ -690,6 +705,33 @@ func TestTestfill(t *testing.T) {
 				expectedError := "testfill: failed to set field Value: struct map values must use 'fill' syntax, got: invalid"
 				require.EqualError(t, err, expectedError)
 				require.Equal(t, InvalidStructMap{}, result)
+			})
+
+			t.Run("struct map with invalid format missing colon", func(t *testing.T) {
+				type InvalidFormatStructMap struct {
+					Value map[string]Bar `testfill:"key1_fill,key2:fill"`
+				}
+
+				result, err := testfill.Fill(InvalidFormatStructMap{})
+
+				expectedError := "testfill: failed to set field Value: invalid map format: key1_fill"
+				require.EqualError(t, err, expectedError)
+				require.Equal(t, InvalidFormatStructMap{}, result)
+			})
+
+			t.Run("struct map with value fill error", func(t *testing.T) {
+				type StructWithError struct {
+					InvalidField float64 `testfill:"not_a_float"`
+				}
+				type MapWithError struct {
+					Value map[string]StructWithError `testfill:"key1:fill,key2:fill"`
+				}
+
+				result, err := testfill.Fill(MapWithError{})
+
+				expectedError := "testfill: failed to set field Value: failed to fill map value for key key1: testfill: failed to set field InvalidField: cannot convert \"not_a_float\" to float64: strconv.ParseFloat: parsing \"not_a_float\": invalid syntax"
+				require.EqualError(t, err, expectedError)
+				require.Equal(t, MapWithError{}, result)
 			})
 
 			t.Run("invalid key conversion in map", func(t *testing.T) {
