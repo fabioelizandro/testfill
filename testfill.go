@@ -96,8 +96,8 @@ func isZeroValue(v reflect.Value) bool {
 func setFieldValue(field reflect.Value, fieldType reflect.StructField, tag string) error {
 	// Handle factory functions
 	if strings.HasPrefix(tag, "factory:") {
-		factoryName := strings.TrimPrefix(tag, "factory:")
-		return callFactoryFunction(field, fieldType, factoryName)
+		factoryTag := strings.TrimPrefix(tag, "factory:")
+		return callFactoryFunction(field, fieldType, factoryTag)
 	}
 	switch field.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
@@ -213,27 +213,51 @@ func setTimeValue(field reflect.Value, tag string) error {
 	return nil
 }
 
-func callFactoryFunction(field reflect.Value, fieldType reflect.StructField, factoryName string) error {
-	// This is a simplified implementation using a registry approach
-	// In a real scenario you might want to support cross-package factory functions
-	
+func callFactoryFunction(field reflect.Value, fieldType reflect.StructField, factoryTag string) error {
+	// Parse factory name and arguments from tag
+	// Format: "FunctionName" or "FunctionName:arg1:arg2..."
+	parts := strings.Split(factoryTag, ":")
+	factoryName := parts[0]
+	args := parts[1:]
+
 	funcValue := reflect.ValueOf(getFactoryFunction(factoryName))
 	if !funcValue.IsValid() {
 		return fmt.Errorf("factory function %s not found", factoryName)
 	}
-	
+
+	funcType := funcValue.Type()
+
+	// Validate argument count
+	if len(args) != funcType.NumIn() {
+		return fmt.Errorf("factory function %s expects %d arguments, got %d",
+			factoryName, funcType.NumIn(), len(args))
+	}
+
+	// Prepare arguments
+	callArgs := make([]reflect.Value, len(args))
+	for i, arg := range args {
+		paramType := funcType.In(i)
+
+		// Convert string argument to the expected parameter type
+		argValue, err := convertStringToType(arg, paramType)
+		if err != nil {
+			return fmt.Errorf("factory function %s argument %d: %w", factoryName, i, err)
+		}
+		callArgs[i] = argValue
+	}
+
 	// Call the factory function
-	results := funcValue.Call(nil)
+	results := funcValue.Call(callArgs)
 	if len(results) != 1 {
 		return fmt.Errorf("factory function %s must return exactly one value", factoryName)
 	}
-	
+
 	result := results[0]
 	if !result.Type().AssignableTo(field.Type()) {
-		return fmt.Errorf("factory function %s returns %s, but field expects %s", 
+		return fmt.Errorf("factory function %s returns %s, but field expects %s",
 			factoryName, result.Type(), field.Type())
 	}
-	
+
 	field.Set(result)
 	return nil
 }
@@ -246,13 +270,47 @@ func getFactoryFunction(name string) interface{} {
 	if fn, exists := factoryRegistry[name]; exists {
 		return fn
 	}
-	
+
 	// Factory functions must be registered before use
-	
+
 	return nil
 }
 
 // This would be a public function to register factory functions
 func RegisterFactory(name string, fn interface{}) {
 	factoryRegistry[name] = fn
+}
+
+// convertStringToType converts a string argument to the expected parameter type
+func convertStringToType(arg string, targetType reflect.Type) (reflect.Value, error) {
+	switch targetType.Kind() {
+	case reflect.String:
+		return reflect.ValueOf(arg), nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		val, err := strconv.ParseInt(arg, 10, 64)
+		if err != nil {
+			return reflect.Value{}, fmt.Errorf("cannot convert %q to %s: %w", arg, targetType.Kind(), err)
+		}
+		return reflect.ValueOf(val).Convert(targetType), nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		val, err := strconv.ParseUint(arg, 10, 64)
+		if err != nil {
+			return reflect.Value{}, fmt.Errorf("cannot convert %q to %s: %w", arg, targetType.Kind(), err)
+		}
+		return reflect.ValueOf(val).Convert(targetType), nil
+	case reflect.Float32, reflect.Float64:
+		val, err := strconv.ParseFloat(arg, 64)
+		if err != nil {
+			return reflect.Value{}, fmt.Errorf("cannot convert %q to %s: %w", arg, targetType.Kind(), err)
+		}
+		return reflect.ValueOf(val).Convert(targetType), nil
+	case reflect.Bool:
+		val, err := strconv.ParseBool(arg)
+		if err != nil {
+			return reflect.Value{}, fmt.Errorf("cannot convert %q to %s: %w", arg, targetType.Kind(), err)
+		}
+		return reflect.ValueOf(val), nil
+	default:
+		return reflect.Value{}, fmt.Errorf("unsupported parameter type %s for factory function arguments", targetType.Kind())
+	}
 }

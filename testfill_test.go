@@ -1,6 +1,7 @@
 package testfill_test
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -23,6 +24,8 @@ type Foo struct {
 	DeeplyNestedWithFillTag  Baz `testfill:"fill"`
 	DeeplyNestedWithoutTag   Baz
 	CustomVO                 CustomVO `testfill:"factory:NewCustomVO"`
+	CustomVOWithArg          CustomVO `testfill:"factory:NewCustomVOWithArg:custom argument"`
+	CustomVOMultiArgs        CustomVO `testfill:"factory:NewCustomVOMultiArgs:prefix:42:suffix"`
 }
 
 type Bar struct {
@@ -42,8 +45,19 @@ type CustomVO struct {
 }
 
 func TestTestfill(t *testing.T) {
+	// Register factory with no arguments
 	testfill.RegisterFactory("NewCustomVO", func() CustomVO {
 		return CustomVO{privateField: "factory default"}
+	})
+
+	// Register factory with arguments
+	testfill.RegisterFactory("NewCustomVOWithArg", func(arg string) CustomVO {
+		return CustomVO{privateField: arg}
+	})
+
+	// Register factory with multiple arguments
+	testfill.RegisterFactory("NewCustomVOMultiArgs", func(prefix string, number int, suffix string) CustomVO {
+		return CustomVO{privateField: fmt.Sprintf("%s-%d-%s", prefix, number, suffix)}
 	})
 
 	t.Run("integers", func(t *testing.T) {
@@ -306,7 +320,7 @@ func TestTestfill(t *testing.T) {
 			foo, err := testfill.Fill(Foo{})
 			require.NoError(t, err)
 
-			expected := NewCustomVO()
+			expected := CustomVO{privateField: "factory default"}
 			require.Equal(t, expected, foo.CustomVO)
 		})
 
@@ -316,6 +330,42 @@ func TestTestfill(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, custom, foo.CustomVO)
+		})
+	})
+
+	t.Run("custom type with factory function and arguments", func(t *testing.T) {
+		t.Run("fills using factory function with argument when zero value", func(t *testing.T) {
+			foo, err := testfill.Fill(Foo{})
+			require.NoError(t, err)
+
+			expected := CustomVO{privateField: "custom argument"}
+			require.Equal(t, expected, foo.CustomVOWithArg)
+		})
+
+		t.Run("does not modify existing custom value with arg factory", func(t *testing.T) {
+			custom := CustomVO{privateField: "existing value"}
+			foo, err := testfill.Fill(Foo{CustomVOWithArg: custom})
+			require.NoError(t, err)
+
+			require.Equal(t, custom, foo.CustomVOWithArg)
+		})
+	})
+
+	t.Run("custom type with factory function and multiple arguments", func(t *testing.T) {
+		t.Run("fills using factory function with multiple arguments when zero value", func(t *testing.T) {
+			foo, err := testfill.Fill(Foo{})
+			require.NoError(t, err)
+
+			expected := CustomVO{privateField: "prefix-42-suffix"}
+			require.Equal(t, expected, foo.CustomVOMultiArgs)
+		})
+
+		t.Run("does not modify existing custom value with multi-arg factory", func(t *testing.T) {
+			custom := CustomVO{privateField: "existing value"}
+			foo, err := testfill.Fill(Foo{CustomVOMultiArgs: custom})
+			require.NoError(t, err)
+
+			require.Equal(t, custom, foo.CustomVOMultiArgs)
 		})
 	})
 }
