@@ -156,6 +156,18 @@ func TestTestfill(t *testing.T) {
 			require.NotNil(t, result.Value)
 			require.Equal(t, 42, *result.Value)
 		})
+
+		t.Run("pointer to invalid int", func(t *testing.T) {
+			type PtrErrorStruct struct {
+				IntPtr *int `testfill:"not_a_number"`
+			}
+
+			result, err := testfill.Fill(PtrErrorStruct{})
+
+			expectedError := "testfill: failed to set field IntPtr: cannot convert \"not_a_number\" to int: strconv.ParseInt: parsing \"not_a_number\": invalid syntax"
+			require.EqualError(t, err, expectedError)
+			require.Equal(t, PtrErrorStruct{}, result)
+		})
 	})
 
 	t.Run("unsigned integers", func(t *testing.T) {
@@ -379,6 +391,18 @@ func TestTestfill(t *testing.T) {
 
 			require.NotNil(t, result.Value)
 			require.Equal(t, 99.99, *result.Value)
+		})
+
+		t.Run("pointer to invalid float", func(t *testing.T) {
+			type PtrErrorStruct struct {
+				FloatPtr *float64 `testfill:"not_a_float"`
+			}
+
+			result, err := testfill.Fill(PtrErrorStruct{})
+
+			expectedError := "testfill: failed to set field FloatPtr: cannot convert \"not_a_float\" to float64: strconv.ParseFloat: parsing \"not_a_float\": invalid syntax"
+			require.EqualError(t, err, expectedError)
+			require.Equal(t, PtrErrorStruct{}, result)
 		})
 	})
 
@@ -688,6 +712,36 @@ func TestTestfill(t *testing.T) {
 			require.EqualError(t, err, expectedError)
 			require.Equal(t, UnsupportedStruct{}, result)
 		})
+
+		t.Run("nested struct with error", func(t *testing.T) {
+			type NestedWithError struct {
+				InvalidInt int `testfill:"not_a_number"`
+			}
+			type ContainerWithError struct {
+				Nested NestedWithError `testfill:"fill"`
+			}
+
+			result, err := testfill.Fill(ContainerWithError{})
+
+			expectedError := "testfill: failed to fill nested struct Nested: testfill: failed to set field InvalidInt: cannot convert \"not_a_number\" to int: strconv.ParseInt: parsing \"not_a_number\": invalid syntax"
+			require.EqualError(t, err, expectedError)
+			require.Equal(t, ContainerWithError{}, result)
+		})
+
+		t.Run("nested struct pointer with error", func(t *testing.T) {
+			type NestedWithError struct {
+				InvalidBool bool `testfill:"not_a_bool"`
+			}
+			type ContainerWithError struct {
+				NestedPtr *NestedWithError `testfill:"fill"`
+			}
+
+			result, err := testfill.Fill(ContainerWithError{})
+
+			expectedError := "testfill: failed to fill nested struct pointer NestedPtr: testfill: failed to set field InvalidBool: cannot convert \"not_a_bool\" to bool: strconv.ParseBool: parsing \"not_a_bool\": invalid syntax"
+			require.EqualError(t, err, expectedError)
+			require.Equal(t, ContainerWithError{}, result)
+		})
 	})
 
 	t.Run("factory", func(t *testing.T) {
@@ -980,6 +1034,99 @@ func TestTestfill(t *testing.T) {
 					require.Equal(t, CustomVO{}, result.Value)
 				})
 			})
+		})
+	})
+
+	t.Run("unexported fields", func(t *testing.T) {
+		t.Run("skips unexported fields", func(t *testing.T) {
+			type UnexportedFieldStruct struct {
+				ExportedField   string `testfill:"exported value"`
+				unexportedField string `testfill:"this should be ignored"`
+			}
+
+			result, err := testfill.Fill(UnexportedFieldStruct{})
+			require.NoError(t, err)
+
+			require.Equal(t, "exported value", result.ExportedField)
+			require.Equal(t, "", result.unexportedField) // Should remain zero value
+		})
+
+		t.Run("handles mix of exported and unexported fields", func(t *testing.T) {
+			type MixedFieldStruct struct {
+				Field1 string `testfill:"value1"`
+				field2 int    `testfill:"42"`
+				Field3 bool   `testfill:"true"`
+				field4 string
+			}
+
+			result, err := testfill.Fill(MixedFieldStruct{})
+			require.NoError(t, err)
+
+			require.Equal(t, "value1", result.Field1)
+			require.Equal(t, 0, result.field2) // Should remain zero value
+			require.Equal(t, true, result.Field3)
+			require.Equal(t, "", result.field4) // Should remain zero value
+		})
+	})
+
+	t.Run("edge cases", func(t *testing.T) {
+		t.Run("embedded struct without fill tag", func(t *testing.T) {
+			type Embedded struct {
+				EmbeddedField string `testfill:"embedded value"`
+			}
+			type ContainerStruct struct {
+				Embedded
+				OtherField string `testfill:"other value"`
+			}
+
+			result, err := testfill.Fill(ContainerStruct{})
+			require.NoError(t, err)
+
+			// Embedded struct fields are not filled unless the embedded struct itself has a fill tag
+			require.Equal(t, "", result.EmbeddedField)
+			require.Equal(t, "other value", result.OtherField)
+		})
+
+		t.Run("embedded struct with fill tag", func(t *testing.T) {
+			type Embedded struct {
+				EmbeddedField string `testfill:"embedded value"`
+			}
+			type ContainerStruct struct {
+				Embedded   `testfill:"fill"`
+				OtherField string `testfill:"other value"`
+			}
+
+			result, err := testfill.Fill(ContainerStruct{})
+			require.NoError(t, err)
+
+			// When embedded struct has fill tag, its fields are filled recursively
+			require.Equal(t, "embedded value", result.EmbeddedField)
+			require.Equal(t, "other value", result.OtherField)
+		})
+
+		t.Run("handles anonymous fields", func(t *testing.T) {
+			type AnonymousStruct struct {
+				string `testfill:"anonymous string"`
+			}
+
+			result, err := testfill.Fill(AnonymousStruct{})
+			require.NoError(t, err)
+
+			// Anonymous fields cannot be set via reflection
+			require.Equal(t, "", result.string)
+		})
+
+		t.Run("handles interface fields", func(t *testing.T) {
+			type InterfaceStruct struct {
+				// Interface fields start as nil (zero value)
+				Data interface{} `testfill:"fill"`
+			}
+
+			result, err := testfill.Fill(InterfaceStruct{})
+			require.NoError(t, err)
+
+			// Interface fields without specific type cannot be filled
+			require.Nil(t, result.Data)
 		})
 	})
 

@@ -18,7 +18,6 @@ const (
 // Error messages
 const (
 	ErrNotStruct           = "testfill: expected struct, got %T"
-	ErrNotStructKind       = "testfill: expected struct, got %s"
 	ErrNestedStruct        = "testfill: failed to fill nested struct %s: %w"
 	ErrNestedStructPtr     = "testfill: failed to fill nested struct pointer %s: %w"
 	ErrSetField            = "testfill: failed to set field %s: %w"
@@ -85,10 +84,6 @@ func RegisterFactory(name string, fn interface{}) {
 // =====================================================
 
 func fillStruct(structValue reflect.Value) error {
-	if structValue.Kind() != reflect.Struct {
-		return fmt.Errorf(ErrNotStructKind, structValue.Kind())
-	}
-
 	structType := structValue.Type()
 	for i := 0; i < structValue.NumField(); i++ {
 		fieldValue := structValue.Field(i)
