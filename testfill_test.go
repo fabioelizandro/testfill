@@ -15,6 +15,7 @@ type Foo struct {
 	Boolean                  bool              `testfill:"true"`
 	Float                    float64           `testfill:"99.99"`
 	StdVO                    time.Time         `testfill:"2023-01-15T10:30:00Z"`
+	TimeWithRFCFactory       time.Time         `testfill:"factory:ParseDate:2024-12-25"`
 	ArrayOfString            []string          `testfill:"tag1,tag2,tag3"`
 	MapOfString              map[string]string `testfill:"key1:value1,key2:value2"`
 	NestedStructWithFillTag  Bar               `testfill:"fill"`
@@ -58,6 +59,16 @@ func TestTestfill(t *testing.T) {
 	// Register factory with multiple arguments
 	testfill.RegisterFactory("NewCustomVOMultiArgs", func(prefix string, number int, suffix string) CustomVO {
 		return CustomVO{privateField: fmt.Sprintf("%s-%d-%s", prefix, number, suffix)}
+	})
+
+	// Register time factories
+	testfill.RegisterFactory("ParseDate", func(dateStr string) time.Time {
+		// Parse date in YYYY-MM-DD format and set time to midnight UTC
+		t, err := time.Parse("2006-01-02", dateStr)
+		if err != nil {
+			panic(fmt.Sprintf("invalid date format (expected YYYY-MM-DD): %s", dateStr))
+		}
+		return t.UTC()
 	})
 
 	t.Run("integers", func(t *testing.T) {
@@ -366,6 +377,24 @@ func TestTestfill(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, custom, foo.CustomVOMultiArgs)
+		})
+	})
+
+	t.Run("time with factory function", func(t *testing.T) {
+		t.Run("fills using ParseDate factory with string argument", func(t *testing.T) {
+			foo, err := testfill.Fill(Foo{})
+			require.NoError(t, err)
+
+			expected := time.Date(2024, 12, 25, 0, 0, 0, 0, time.UTC)
+			require.Equal(t, expected, foo.TimeWithRFCFactory)
+		})
+
+		t.Run("does not modify existing date time value", func(t *testing.T) {
+			customTime := time.Date(2020, 6, 15, 12, 0, 0, 0, time.UTC)
+			foo, err := testfill.Fill(Foo{TimeWithRFCFactory: customTime})
+			require.NoError(t, err)
+
+			require.Equal(t, customTime, foo.TimeWithRFCFactory)
 		})
 	})
 }
