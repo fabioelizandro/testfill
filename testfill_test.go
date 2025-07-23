@@ -1354,6 +1354,181 @@ func TestTestfill(t *testing.T) {
 		})
 	})
 
+	t.Run("named variants", func(t *testing.T) {
+		t.Run("basic named variants", func(t *testing.T) {
+			type User struct {
+				Name string `testfill:"John" testfill_admin:"Jane" testfill_guest:"Bob"`
+				Age  int    `testfill:"25" testfill_admin:"30" testfill_guest:"35"`
+				Role string `testfill:"user" testfill_admin:"admin" testfill_guest:"guest"`
+			}
+
+			type UserList struct {
+				Users []User `testfill:"variants:default,admin,guest"`
+			}
+
+			result, err := testfill.Fill(UserList{})
+			require.NoError(t, err)
+
+			require.Len(t, result.Users, 3)
+
+			// First user (default)
+			require.Equal(t, "John", result.Users[0].Name)
+			require.Equal(t, 25, result.Users[0].Age)
+			require.Equal(t, "user", result.Users[0].Role)
+
+			// Second user (admin)
+			require.Equal(t, "Jane", result.Users[1].Name)
+			require.Equal(t, 30, result.Users[1].Age)
+			require.Equal(t, "admin", result.Users[1].Role)
+
+			// Third user (guest)
+			require.Equal(t, "Bob", result.Users[2].Name)
+			require.Equal(t, 35, result.Users[2].Age)
+			require.Equal(t, "guest", result.Users[2].Role)
+		})
+
+		t.Run("partial variant coverage", func(t *testing.T) {
+			type User struct {
+				Name string `testfill:"John" testfill_admin:"Jane"`                         // Only has admin variant
+				Age  int    `testfill:"25"`                                                 // Only has default
+				Role string `testfill:"user" testfill_admin:"admin" testfill_guest:"guest"` // Has all variants
+			}
+
+			type UserList struct {
+				Users []User `testfill:"variants:default,admin,guest"`
+			}
+
+			result, err := testfill.Fill(UserList{})
+			require.NoError(t, err)
+
+			require.Len(t, result.Users, 3)
+
+			// First user (default)
+			require.Equal(t, "John", result.Users[0].Name)
+			require.Equal(t, 25, result.Users[0].Age)
+			require.Equal(t, "user", result.Users[0].Role)
+
+			// Second user (admin)
+			require.Equal(t, "Jane", result.Users[1].Name)
+			require.Equal(t, 25, result.Users[1].Age) // Falls back to default
+			require.Equal(t, "admin", result.Users[1].Role)
+
+			// Third user (guest)
+			require.Equal(t, "John", result.Users[2].Name) // Falls back to default
+			require.Equal(t, 25, result.Users[2].Age)      // Falls back to default
+			require.Equal(t, "guest", result.Users[2].Role)
+		})
+
+		t.Run("nested structs with variants", func(t *testing.T) {
+			type Address struct {
+				Street string `testfill:"123 Main St" testfill_work:"456 Office Blvd"`
+				City   string `testfill:"New York" testfill_work:"Boston"`
+			}
+
+			type Person struct {
+				Name    string  `testfill:"John" testfill_manager:"Jane"`
+				Address Address `testfill:"fill"`
+			}
+
+			type PersonList struct {
+				People []Person `testfill:"variants:default,manager"`
+			}
+
+			result, err := testfill.Fill(PersonList{})
+			require.NoError(t, err)
+
+			require.Len(t, result.People, 2)
+
+			// First person (default)
+			require.Equal(t, "John", result.People[0].Name)
+			require.Equal(t, "123 Main St", result.People[0].Address.Street)
+			require.Equal(t, "New York", result.People[0].Address.City)
+
+			// Second person (manager)
+			require.Equal(t, "Jane", result.People[1].Name)
+			require.Equal(t, "123 Main St", result.People[1].Address.Street) // Nested struct uses default since no work variant
+			require.Equal(t, "New York", result.People[1].Address.City)
+		})
+
+		t.Run("single variant", func(t *testing.T) {
+			type User struct {
+				Name string `testfill:"John" testfill_admin:"Jane"`
+				Role string `testfill:"user" testfill_admin:"admin"`
+			}
+
+			type UserList struct {
+				Users []User `testfill:"variants:admin"`
+			}
+
+			result, err := testfill.Fill(UserList{})
+			require.NoError(t, err)
+
+			require.Len(t, result.Users, 1)
+			require.Equal(t, "Jane", result.Users[0].Name)
+			require.Equal(t, "admin", result.Users[0].Role)
+		})
+
+		t.Run("whitespace handling in variants", func(t *testing.T) {
+			type User struct {
+				Name string `testfill:"John" testfill_admin:"Jane"`
+			}
+
+			type UserList struct {
+				Users []User `testfill:"variants: default , admin , guest "`
+			}
+
+			result, err := testfill.Fill(UserList{})
+			require.NoError(t, err)
+
+			require.Len(t, result.Users, 3)
+			require.Equal(t, "John", result.Users[0].Name)
+			require.Equal(t, "Jane", result.Users[1].Name)
+			require.Equal(t, "John", result.Users[2].Name) // guest falls back to default
+		})
+
+		t.Run("empty variant list", func(t *testing.T) {
+			type User struct {
+				Name string `testfill:"John"`
+			}
+
+			type UserList struct {
+				Users []User `testfill:"variants:"`
+			}
+
+			result, err := testfill.Fill(UserList{})
+			require.NoError(t, err)
+
+			require.Len(t, result.Users, 1)
+			require.Equal(t, "John", result.Users[0].Name)
+		})
+
+		t.Run("preserves existing non-zero values", func(t *testing.T) {
+			type User struct {
+				Name string `testfill:"John" testfill_admin:"Jane"`
+				Age  int    `testfill:"25" testfill_admin:"30"`
+			}
+
+			type UserList struct {
+				Users []User `testfill:"variants:default,admin"`
+			}
+
+			// Pre-fill first user partially
+			input := UserList{
+				Users: []User{
+					{Name: "CustomName"}, // Age should still get filled
+				},
+			}
+
+			result, err := testfill.Fill(input)
+			require.NoError(t, err)
+
+			// Should preserve existing slice, not create new one
+			require.Len(t, result.Users, 1)
+			require.Equal(t, "CustomName", result.Users[0].Name) // Preserved
+			require.Equal(t, 0, result.Users[0].Age)             // Not filled since slice was pre-existing
+		})
+	})
+
 	t.Run("json unmarshal", func(t *testing.T) {
 		t.Run("various types", func(t *testing.T) {
 			type TestJSON struct {

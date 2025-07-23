@@ -9,6 +9,7 @@ A Go library for automatically filling struct fields with test data based on str
 - 🏭 **Factory functions** - Register custom functions for complex type initialization
 - 🪆 **Nested struct support** - Recursively fill nested structs with the `fill` tag
 - 📋 **JSON unmarshaling** - Populate fields from JSON data with the `unmarshal:` prefix
+- 🎭 **Named variants** - Create slices with different field values using variant tags
 - 🎯 **Type safety** - Full type checking at compile time with generics
 - ⚡ **Simple API** - Just one function call to fill your structs
 
@@ -139,6 +140,34 @@ type UserList struct {
 userList, _ := testfill.Fill(UserList{})
 // Result: {Users:[{Name:User Age:25} {Name:User Age:25} {Name:User Age:25}]}
 ```
+
+#### Named Variants for Different Test Data
+Create slices where each item has different field values using named variants:
+
+```go
+type User struct {
+    Name string `testfill:"John" testfill_admin:"Jane" testfill_guest:"Bob"`
+    Age  int    `testfill:"25" testfill_admin:"30" testfill_guest:"35"`
+    Role string `testfill:"user" testfill_admin:"admin" testfill_guest:"guest"`
+}
+
+type UserList struct {
+    Users []User `testfill:"variants:default,admin,guest"`
+}
+
+userList, _ := testfill.Fill(UserList{})
+// Result: {Users:[
+//   {Name:John Age:25 Role:user},     // default variant
+//   {Name:Jane Age:30 Role:admin},    // admin variant  
+//   {Name:Bob Age:35 Role:guest}      // guest variant
+// ]}
+```
+
+**Variant Features:**
+- Use `testfill_<variant_name>` tags to define alternative values
+- If a variant doesn't exist for a field, falls back to the default `testfill` tag
+- Supports nested structs - variant selection propagates to nested fields
+- Handles partial variant coverage gracefully
 
 #### Primitive Maps
 ```go
@@ -343,8 +372,8 @@ Common error scenarios:
 
 ## Limitations
 
-- Struct value maps only support string keys (use `key:fill` syntax)
-- Struct slices require `fill:count` syntax (e.g., `fill:3` for 3 instances)
+- Struct value maps only support string keys (use `key:fill` syntax)  
+- Struct slices support either `fill:count` for identical instances or `variants:name1,name2,name3` for different field values
 - Interface fields cannot be filled
 - Channels and functions are not supported
 - Unexported fields are ignored

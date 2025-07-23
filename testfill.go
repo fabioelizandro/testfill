@@ -15,6 +15,7 @@ const (
 	TagFill      = "fill"
 	TagFactory   = "factory:"
 	TagUnmarshal = "unmarshal:"
+	TagVariant   = "variants:"
 )
 
 // Error messages
@@ -87,6 +88,10 @@ func RegisterFactory(name string, fn interface{}) {
 // =====================================================
 
 func fillStruct(structValue reflect.Value) error {
+	return fillStructWithVariant(structValue, "")
+}
+
+func fillStructWithVariant(structValue reflect.Value, variant string) error {
 	structType := structValue.Type()
 	for i := 0; i < structValue.NumField(); i++ {
 		fieldValue := structValue.Field(i)
@@ -96,11 +101,12 @@ func fillStruct(structValue reflect.Value) error {
 			continue
 		}
 
-		tagValue := fieldType.Tag.Get(TagName)
+		// Get the appropriate tag value based on variant
+		tagValue := getTagValueForVariant(fieldType, variant)
 
 		// Handle nested structs and pointers
 		if tagValue == TagFill {
-			if err := handleNestedFill(fieldValue, fieldType); err != nil {
+			if err := handleNestedFillWithVariant(fieldValue, fieldType, variant); err != nil {
 				return err
 			}
 			continue
@@ -135,14 +141,36 @@ func isZeroValue(v reflect.Value) bool {
 	return v.IsZero()
 }
 
+// getTagValueForVariant gets the appropriate tag value based on the variant
+// If variant is empty, uses the default "testfill" tag
+// If variant is specified, looks for "testfill_<variant>" tag first, falls back to default
+func getTagValueForVariant(fieldType reflect.StructField, variant string) string {
+	if variant == "" {
+		return fieldType.Tag.Get(TagName)
+	}
+
+	// Look for variant-specific tag first
+	variantTag := TagName + "_" + variant
+	if value := fieldType.Tag.Get(variantTag); value != "" {
+		return value
+	}
+
+	// Fall back to default tag
+	return fieldType.Tag.Get(TagName)
+}
+
 // =====================================================
 // Nested struct handling
 // =====================================================
 
 func handleNestedFill(field reflect.Value, fieldType reflect.StructField) error {
+	return handleNestedFillWithVariant(field, fieldType, "")
+}
+
+func handleNestedFillWithVariant(field reflect.Value, fieldType reflect.StructField, variant string) error {
 	switch field.Kind() {
 	case reflect.Struct:
-		if err := fillStruct(field); err != nil {
+		if err := fillStructWithVariant(field, variant); err != nil {
 			return fmt.Errorf(ErrNestedStruct, fieldType.Name, err)
 		}
 	case reflect.Ptr:
@@ -152,7 +180,7 @@ func handleNestedFill(field reflect.Value, fieldType reflect.StructField) error 
 				newValue := reflect.New(field.Type().Elem())
 				field.Set(newValue)
 			}
-			if err := fillStruct(field.Elem()); err != nil {
+			if err := fillStructWithVariant(field.Elem(), variant); err != nil {
 				return fmt.Errorf(ErrNestedStructPtr, fieldType.Name, err)
 			}
 		}
@@ -233,6 +261,28 @@ func setStructSliceValue(field reflect.Value, tag string, elemType reflect.Type)
 			elemValue := reflect.New(elemType).Elem()
 			if err := fillStruct(elemValue); err != nil {
 				return fmt.Errorf("failed to fill slice element %d: %w", i, err)
+			}
+			slice.Index(i).Set(elemValue)
+		}
+		field.Set(slice)
+		return nil
+	}
+
+	// Support "variants:name1,name2,name3" syntax for struct slices with different field values
+	if strings.HasPrefix(tag, TagVariant) {
+		variantStr := strings.TrimPrefix(tag, TagVariant)
+		variants := strings.Split(variantStr, ",")
+
+		// Clean up variant names
+		for i, variant := range variants {
+			variants[i] = strings.TrimSpace(variant)
+		}
+
+		slice := reflect.MakeSlice(field.Type(), len(variants), len(variants))
+		for i, variant := range variants {
+			elemValue := reflect.New(elemType).Elem()
+			if err := fillStructWithVariant(elemValue, variant); err != nil {
+				return fmt.Errorf("failed to fill slice element %d with variant %s: %w", i, variant, err)
 			}
 			slice.Index(i).Set(elemValue)
 		}
