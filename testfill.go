@@ -76,7 +76,7 @@ func fillStruct(v reflect.Value) error {
 			continue
 		}
 
-		err := setFieldValue(field, tag)
+		err := setFieldValue(field, fieldType, tag)
 		if err != nil {
 			return fmt.Errorf("testfill: failed to set field %s: %w", fieldType.Name, err)
 		}
@@ -93,7 +93,12 @@ func isZeroValue(v reflect.Value) bool {
 	return v.IsZero()
 }
 
-func setFieldValue(field reflect.Value, tag string) error {
+func setFieldValue(field reflect.Value, fieldType reflect.StructField, tag string) error {
+	// Handle factory functions
+	if strings.HasPrefix(tag, "factory:") {
+		factoryName := strings.TrimPrefix(tag, "factory:")
+		return callFactoryFunction(field, fieldType, factoryName)
+	}
 	switch field.Kind() {
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 		val, err := strconv.ParseInt(tag, 10, 64)
@@ -133,7 +138,7 @@ func setFieldValue(field reflect.Value, tag string) error {
 		return setMapValue(field, tag)
 
 	case reflect.Ptr:
-		return setPtrValue(field, tag)
+		return setPtrValue(field, fieldType, tag)
 
 	case reflect.Struct:
 		if field.Type() == reflect.TypeOf(time.Time{}) {
@@ -186,11 +191,11 @@ func setMapValue(field reflect.Value, tag string) error {
 	return nil
 }
 
-func setPtrValue(field reflect.Value, tag string) error {
+func setPtrValue(field reflect.Value, fieldType reflect.StructField, tag string) error {
 	elemType := field.Type().Elem()
 	elem := reflect.New(elemType).Elem()
 
-	err := setFieldValue(elem, tag)
+	err := setFieldValue(elem, fieldType, tag)
 	if err != nil {
 		return err
 	}
@@ -206,4 +211,48 @@ func setTimeValue(field reflect.Value, tag string) error {
 	}
 	field.Set(reflect.ValueOf(t))
 	return nil
+}
+
+func callFactoryFunction(field reflect.Value, fieldType reflect.StructField, factoryName string) error {
+	// This is a simplified implementation using a registry approach
+	// In a real scenario you might want to support cross-package factory functions
+	
+	funcValue := reflect.ValueOf(getFactoryFunction(factoryName))
+	if !funcValue.IsValid() {
+		return fmt.Errorf("factory function %s not found", factoryName)
+	}
+	
+	// Call the factory function
+	results := funcValue.Call(nil)
+	if len(results) != 1 {
+		return fmt.Errorf("factory function %s must return exactly one value", factoryName)
+	}
+	
+	result := results[0]
+	if !result.Type().AssignableTo(field.Type()) {
+		return fmt.Errorf("factory function %s returns %s, but field expects %s", 
+			factoryName, result.Type(), field.Type())
+	}
+	
+	field.Set(result)
+	return nil
+}
+
+// This is a simplified registry for factory functions
+// In a real implementation, you might want a more sophisticated approach
+var factoryRegistry = make(map[string]interface{})
+
+func getFactoryFunction(name string) interface{} {
+	if fn, exists := factoryRegistry[name]; exists {
+		return fn
+	}
+	
+	// Factory functions must be registered before use
+	
+	return nil
+}
+
+// This would be a public function to register factory functions
+func RegisterFactory(name string, fn interface{}) {
+	factoryRegistry[name] = fn
 }

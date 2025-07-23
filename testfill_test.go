@@ -9,19 +9,20 @@ import (
 )
 
 type Foo struct {
-	Integer                    int               `testfill:"42"`
-	String                     string            `testfill:"John Doe"`
-	Boolean                    bool              `testfill:"true"`
-	Float                      float64           `testfill:"99.99"`
-	StdVO                      time.Time         `testfill:"2023-01-15T10:30:00Z"`
-	ArrayOfString              []string          `testfill:"tag1,tag2,tag3"`
-	MapOfString                map[string]string `testfill:"key1:value1,key2:value2"`
-	NestedStructWithFillTag    Bar               `testfill:"fill"`
-	NestedStructWithoutTag     Bar
-	NestedPointerWithFillTag   *Bar              `testfill:"fill"`
-	NestedPointerWithoutTag    *Bar
-	DeeplyNestedWithFillTag    Baz               `testfill:"fill"`
-	DeeplyNestedWithoutTag     Baz
+	Integer                  int               `testfill:"42"`
+	String                   string            `testfill:"John Doe"`
+	Boolean                  bool              `testfill:"true"`
+	Float                    float64           `testfill:"99.99"`
+	StdVO                    time.Time         `testfill:"2023-01-15T10:30:00Z"`
+	ArrayOfString            []string          `testfill:"tag1,tag2,tag3"`
+	MapOfString              map[string]string `testfill:"key1:value1,key2:value2"`
+	NestedStructWithFillTag  Bar               `testfill:"fill"`
+	NestedStructWithoutTag   Bar
+	NestedPointerWithFillTag *Bar `testfill:"fill"`
+	NestedPointerWithoutTag  *Bar
+	DeeplyNestedWithFillTag  Baz `testfill:"fill"`
+	DeeplyNestedWithoutTag   Baz
+	CustomVO                 CustomVO `testfill:"factory:NewCustomVO"`
 }
 
 type Bar struct {
@@ -30,13 +31,21 @@ type Bar struct {
 }
 
 type Baz struct {
-	Name        string `testfill:"Deep Nested"`
-	Value       int    `testfill:"100"`
-	NestedBar   Bar    `testfill:"fill"`
+	Name         string `testfill:"Deep Nested"`
+	Value        int    `testfill:"100"`
+	NestedBar    Bar    `testfill:"fill"`
 	NonFilledBar Bar
 }
 
+type CustomVO struct {
+	privateField string
+}
+
 func TestTestfill(t *testing.T) {
+	testfill.RegisterFactory("NewCustomVO", func() CustomVO {
+		return CustomVO{privateField: "factory default"}
+	})
+
 	t.Run("integers", func(t *testing.T) {
 		t.Run("fills default value", func(t *testing.T) {
 			foo, err := testfill.Fill(Foo{})
@@ -249,9 +258,9 @@ func TestTestfill(t *testing.T) {
 			require.NoError(t, err)
 
 			expected := Baz{
-				Name:        "Deep Nested",
-				Value:       100,
-				NestedBar:   Bar{Integer: 42, String: "Olivie Smith"},
+				Name:         "Deep Nested",
+				Value:        100,
+				NestedBar:    Bar{Integer: 42, String: "Olivie Smith"},
 				NonFilledBar: Bar{}, // This should remain empty since no fill tag
 			}
 			require.Equal(t, expected, foo.DeeplyNestedWithFillTag)
@@ -259,16 +268,16 @@ func TestTestfill(t *testing.T) {
 
 		t.Run("fills zero fields while preserving existing values", func(t *testing.T) {
 			partial := Baz{
-				Name:        "Custom Name",
-				NestedBar:   Bar{Integer: 555},
+				Name:      "Custom Name",
+				NestedBar: Bar{Integer: 555},
 			}
 			foo, err := testfill.Fill(Foo{DeeplyNestedWithFillTag: partial})
 			require.NoError(t, err)
 
 			expected := Baz{
-				Name:        "Custom Name",
-				Value:       100,
-				NestedBar:   Bar{Integer: 555, String: "Olivie Smith"},
+				Name:         "Custom Name",
+				Value:        100,
+				NestedBar:    Bar{Integer: 555, String: "Olivie Smith"},
 				NonFilledBar: Bar{}, // This should remain empty
 			}
 			require.Equal(t, expected, foo.DeeplyNestedWithFillTag)
@@ -289,6 +298,24 @@ func TestTestfill(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, custom, foo.DeeplyNestedWithoutTag)
+		})
+	})
+
+	t.Run("custom type with factory function", func(t *testing.T) {
+		t.Run("fills using factory function when zero value", func(t *testing.T) {
+			foo, err := testfill.Fill(Foo{})
+			require.NoError(t, err)
+
+			expected := NewCustomVO()
+			require.Equal(t, expected, foo.CustomVO)
+		})
+
+		t.Run("does not modify existing custom value", func(t *testing.T) {
+			custom := CustomVO{privateField: "existing value"}
+			foo, err := testfill.Fill(Foo{CustomVO: custom})
+			require.NoError(t, err)
+
+			require.Equal(t, custom, foo.CustomVO)
 		})
 	})
 }
