@@ -102,6 +102,99 @@ func TestTestfill(t *testing.T) {
 			require.EqualError(t, err, expectedError)
 			require.Equal(t, InvalidInt{}, result)
 		})
+
+		t.Run("pointer to int fills value", func(t *testing.T) {
+			type PointerTest struct {
+				Value *int `testfill:"42"`
+			}
+
+			result, err := testfill.Fill(PointerTest{})
+			require.NoError(t, err)
+
+			require.NotNil(t, result.Value)
+			require.Equal(t, 42, *result.Value)
+		})
+	})
+
+	t.Run("unsigned integers", func(t *testing.T) {
+		t.Run("uint fills default value", func(t *testing.T) {
+			type UintTest struct {
+				Value uint `testfill:"42"`
+			}
+
+			result, err := testfill.Fill(UintTest{})
+			require.NoError(t, err)
+
+			require.Equal(t, uint(42), result.Value)
+		})
+
+		t.Run("uint8 fills default value", func(t *testing.T) {
+			type Uint8Test struct {
+				Value uint8 `testfill:"255"`
+			}
+
+			result, err := testfill.Fill(Uint8Test{})
+			require.NoError(t, err)
+
+			require.Equal(t, uint8(255), result.Value)
+		})
+
+		t.Run("uint16 fills default value", func(t *testing.T) {
+			type Uint16Test struct {
+				Value uint16 `testfill:"65535"`
+			}
+
+			result, err := testfill.Fill(Uint16Test{})
+			require.NoError(t, err)
+
+			require.Equal(t, uint16(65535), result.Value)
+		})
+
+		t.Run("uint32 fills default value", func(t *testing.T) {
+			type Uint32Test struct {
+				Value uint32 `testfill:"4294967295"`
+			}
+
+			result, err := testfill.Fill(Uint32Test{})
+			require.NoError(t, err)
+
+			require.Equal(t, uint32(4294967295), result.Value)
+		})
+
+		t.Run("uint64 fills default value", func(t *testing.T) {
+			type Uint64Test struct {
+				Value uint64 `testfill:"18446744073709551615"`
+			}
+
+			result, err := testfill.Fill(Uint64Test{})
+			require.NoError(t, err)
+
+			require.Equal(t, uint64(18446744073709551615), result.Value)
+		})
+
+		t.Run("invalid uint tag", func(t *testing.T) {
+			type InvalidUint struct {
+				Value uint `testfill:"not_a_number"`
+			}
+
+			result, err := testfill.Fill(InvalidUint{})
+
+			expectedError := "testfill: failed to set field Value: strconv.ParseUint: parsing \"not_a_number\": invalid syntax"
+			require.EqualError(t, err, expectedError)
+			require.Equal(t, InvalidUint{}, result)
+		})
+
+		t.Run("pointer to uint fills value", func(t *testing.T) {
+			type PointerTest struct {
+				Value *uint `testfill:"42"`
+			}
+
+			result, err := testfill.Fill(PointerTest{})
+			require.NoError(t, err)
+
+			require.NotNil(t, result.Value)
+			require.Equal(t, uint(42), *result.Value)
+		})
 	})
 
 	t.Run("string", func(t *testing.T) {
@@ -117,6 +210,18 @@ func TestTestfill(t *testing.T) {
 			require.NoError(t, err)
 
 			require.Equal(t, "Mary", foo.String)
+		})
+
+		t.Run("pointer to string fills value", func(t *testing.T) {
+			type PointerTest struct {
+				Value *string `testfill:"hello"`
+			}
+
+			result, err := testfill.Fill(PointerTest{})
+			require.NoError(t, err)
+
+			require.NotNil(t, result.Value)
+			require.Equal(t, "hello", *result.Value)
 		})
 	})
 
@@ -146,6 +251,18 @@ func TestTestfill(t *testing.T) {
 			require.EqualError(t, err, expectedError)
 			require.Equal(t, InvalidBool{}, result)
 		})
+
+		t.Run("pointer to bool fills value", func(t *testing.T) {
+			type PointerTest struct {
+				Value *bool `testfill:"true"`
+			}
+
+			result, err := testfill.Fill(PointerTest{})
+			require.NoError(t, err)
+
+			require.NotNil(t, result.Value)
+			require.Equal(t, true, *result.Value)
+		})
 	})
 
 	t.Run("float", func(t *testing.T) {
@@ -173,6 +290,18 @@ func TestTestfill(t *testing.T) {
 			expectedError := "testfill: failed to set field Value: strconv.ParseFloat: parsing \"not_a_float\": invalid syntax"
 			require.EqualError(t, err, expectedError)
 			require.Equal(t, InvalidFloat{}, result)
+		})
+
+		t.Run("pointer to float fills value", func(t *testing.T) {
+			type PointerTest struct {
+				Value *float64 `testfill:"99.99"`
+			}
+
+			result, err := testfill.Fill(PointerTest{})
+			require.NoError(t, err)
+
+			require.NotNil(t, result.Value)
+			require.Equal(t, 99.99, *result.Value)
 		})
 	})
 
@@ -667,6 +796,55 @@ func TestTestfill(t *testing.T) {
 					expectedError := "testfill: failed to set field Value: factory function BoolArgFactory argument 0: cannot convert \"not_a_bool\" to bool: strconv.ParseBool: parsing \"not_a_bool\": invalid syntax"
 					require.EqualError(t, err, expectedError)
 					require.Equal(t, InvalidBoolArg{}, result)
+				})
+
+				testfill.RegisterFactory("UintArgFactory", func(num uint) CustomVO {
+					return CustomVO{}
+				})
+
+				t.Run("valid uint conversion", func(t *testing.T) {
+					type ValidUintArg struct {
+						Value CustomVO `testfill:"factory:UintArgFactory:42"`
+					}
+
+					result, err := testfill.Fill(ValidUintArg{})
+
+					require.NoError(t, err)
+					require.Equal(t, CustomVO{}, result.Value)
+				})
+
+				t.Run("invalid uint conversion", func(t *testing.T) {
+					type InvalidUintArg struct {
+						Value CustomVO `testfill:"factory:UintArgFactory:not_a_number"`
+					}
+
+					result, err := testfill.Fill(InvalidUintArg{})
+
+					expectedError := "testfill: failed to set field Value: factory function UintArgFactory argument 0: cannot convert \"not_a_number\" to uint: strconv.ParseUint: parsing \"not_a_number\": invalid syntax"
+					require.EqualError(t, err, expectedError)
+					require.Equal(t, InvalidUintArg{}, result)
+				})
+
+				t.Run("valid float conversion", func(t *testing.T) {
+					type ValidFloatArg struct {
+						Value CustomVO `testfill:"factory:FloatArgFactory:99.99"`
+					}
+
+					result, err := testfill.Fill(ValidFloatArg{})
+
+					require.NoError(t, err)
+					require.Equal(t, CustomVO{}, result.Value)
+				})
+
+				t.Run("valid bool conversion", func(t *testing.T) {
+					type ValidBoolArg struct {
+						Value CustomVO `testfill:"factory:BoolArgFactory:true"`
+					}
+
+					result, err := testfill.Fill(ValidBoolArg{})
+
+					require.NoError(t, err)
+					require.Equal(t, CustomVO{}, result.Value)
 				})
 			})
 		})
