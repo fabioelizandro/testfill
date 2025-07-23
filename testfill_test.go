@@ -140,7 +140,7 @@ func TestTestfill(t *testing.T) {
 
 			result, err := testfill.Fill(InvalidInt{})
 
-			expectedError := "testfill: failed to set field Value: strconv.ParseInt: parsing \"not_a_number\": invalid syntax"
+			expectedError := "testfill: failed to set field Value: cannot convert \"not_a_number\" to int: strconv.ParseInt: parsing \"not_a_number\": invalid syntax"
 			require.EqualError(t, err, expectedError)
 			require.Equal(t, InvalidInt{}, result)
 		})
@@ -221,7 +221,7 @@ func TestTestfill(t *testing.T) {
 
 			result, err := testfill.Fill(InvalidUint{})
 
-			expectedError := "testfill: failed to set field Value: strconv.ParseUint: parsing \"not_a_number\": invalid syntax"
+			expectedError := "testfill: failed to set field Value: cannot convert \"not_a_number\" to uint: strconv.ParseUint: parsing \"not_a_number\": invalid syntax"
 			require.EqualError(t, err, expectedError)
 			require.Equal(t, InvalidUint{}, result)
 		})
@@ -305,7 +305,7 @@ func TestTestfill(t *testing.T) {
 
 			result, err := testfill.Fill(InvalidBool{})
 
-			expectedError := "testfill: failed to set field Value: strconv.ParseBool: parsing \"not_a_bool\": invalid syntax"
+			expectedError := "testfill: failed to set field Value: cannot convert \"not_a_bool\" to bool: strconv.ParseBool: parsing \"not_a_bool\": invalid syntax"
 			require.EqualError(t, err, expectedError)
 			require.Equal(t, InvalidBool{}, result)
 		})
@@ -364,7 +364,7 @@ func TestTestfill(t *testing.T) {
 
 			result, err := testfill.Fill(InvalidFloat{})
 
-			expectedError := "testfill: failed to set field Value: strconv.ParseFloat: parsing \"not_a_float\": invalid syntax"
+			expectedError := "testfill: failed to set field Value: cannot convert \"not_a_float\" to float64: strconv.ParseFloat: parsing \"not_a_float\": invalid syntax"
 			require.EqualError(t, err, expectedError)
 			require.Equal(t, InvalidFloat{}, result)
 		})
