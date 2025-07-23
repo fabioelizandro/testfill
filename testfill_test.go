@@ -10,22 +10,12 @@ import (
 )
 
 type Foo struct {
-	Integer                  int               `testfill:"42"`
-	String                   string            `testfill:"John Doe"`
-	Boolean                  bool              `testfill:"true"`
-	Float                    float64           `testfill:"99.99"`
-	StdVO                    time.Time         `testfill:"2023-01-15T10:30:00Z"`
-	TimeWithRFCFactory       time.Time         `testfill:"factory:ParseDate:2024-12-25"`
-	ArrayOfString            []string          `testfill:"tag1,tag2,tag3"`
-	MapOfString              map[string]string `testfill:"key1:value1,key2:value2"`
-	NestedStructWithFillTag  Bar               `testfill:"fill"`
+	NestedStructWithFillTag  Bar `testfill:"fill"`
 	NestedStructWithoutTag   Bar
 	NestedPointerWithFillTag *Bar `testfill:"fill"`
 	NestedPointerWithoutTag  *Bar
 	DeeplyNestedWithFillTag  Baz `testfill:"fill"`
 	DeeplyNestedWithoutTag   Baz
-	CustomVO                 CustomVO `testfill:"factory:NewCustomVO"`
-	CustomVOWithArg          CustomVO `testfill:"factory:NewCustomVOWithArg:custom argument"`
 	CustomVOMultiArgs        CustomVO `testfill:"factory:NewCustomVOMultiArgs:prefix:42:suffix"`
 }
 
@@ -77,18 +67,70 @@ func TestTestfill(t *testing.T) {
 	})
 
 	t.Run("integers", func(t *testing.T) {
-		t.Run("fills default value", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{})
+		t.Run("int fills default value", func(t *testing.T) {
+			type IntTest struct {
+				Value int `testfill:"42"`
+			}
+
+			result, err := testfill.Fill(IntTest{})
 			require.NoError(t, err)
 
-			require.Equal(t, 42, foo.Integer)
+			require.Equal(t, 42, result.Value)
+		})
+
+		t.Run("int8 fills default value", func(t *testing.T) {
+			type Int8Test struct {
+				Value int8 `testfill:"127"`
+			}
+
+			result, err := testfill.Fill(Int8Test{})
+			require.NoError(t, err)
+
+			require.Equal(t, int8(127), result.Value)
+		})
+
+		t.Run("int16 fills default value", func(t *testing.T) {
+			type Int16Test struct {
+				Value int16 `testfill:"32767"`
+			}
+
+			result, err := testfill.Fill(Int16Test{})
+			require.NoError(t, err)
+
+			require.Equal(t, int16(32767), result.Value)
+		})
+
+		t.Run("int32 fills default value", func(t *testing.T) {
+			type Int32Test struct {
+				Value int32 `testfill:"2147483647"`
+			}
+
+			result, err := testfill.Fill(Int32Test{})
+			require.NoError(t, err)
+
+			require.Equal(t, int32(2147483647), result.Value)
+		})
+
+		t.Run("int64 fills default value", func(t *testing.T) {
+			type Int64Test struct {
+				Value int64 `testfill:"9223372036854775807"`
+			}
+
+			result, err := testfill.Fill(Int64Test{})
+			require.NoError(t, err)
+
+			require.Equal(t, int64(9223372036854775807), result.Value)
 		})
 
 		t.Run("does not fill when value is already filled", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{Integer: 21})
+			type IntTest struct {
+				Value int `testfill:"42"`
+			}
+
+			result, err := testfill.Fill(IntTest{Value: 21})
 			require.NoError(t, err)
 
-			require.Equal(t, 21, foo.Integer)
+			require.Equal(t, 21, result.Value)
 		})
 
 		t.Run("invalid int tag", func(t *testing.T) {
@@ -199,17 +241,25 @@ func TestTestfill(t *testing.T) {
 
 	t.Run("string", func(t *testing.T) {
 		t.Run("fills default value", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{})
+			type StringTest struct {
+				Value string `testfill:"John Doe"`
+			}
+
+			result, err := testfill.Fill(StringTest{})
 			require.NoError(t, err)
 
-			require.Equal(t, "John Doe", foo.String)
+			require.Equal(t, "John Doe", result.Value)
 		})
 
 		t.Run("does not fill when value is already filled", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{String: "Mary"})
+			type StringTest struct {
+				Value string `testfill:"John Doe"`
+			}
+
+			result, err := testfill.Fill(StringTest{Value: "Mary"})
 			require.NoError(t, err)
 
-			require.Equal(t, "Mary", foo.String)
+			require.Equal(t, "Mary", result.Value)
 		})
 
 		t.Run("pointer to string fills value", func(t *testing.T) {
@@ -227,17 +277,25 @@ func TestTestfill(t *testing.T) {
 
 	t.Run("boolean", func(t *testing.T) {
 		t.Run("fills default value", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{})
+			type BoolTest struct {
+				Value bool `testfill:"true"`
+			}
+
+			result, err := testfill.Fill(BoolTest{})
 			require.NoError(t, err)
 
-			require.Equal(t, true, foo.Boolean)
+			require.Equal(t, true, result.Value)
 		})
 
 		t.Run("does not fill when value is already filled", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{Boolean: true})
+			type BoolTest struct {
+				Value bool `testfill:"false"`
+			}
+
+			result, err := testfill.Fill(BoolTest{Value: true})
 			require.NoError(t, err)
 
-			require.Equal(t, true, foo.Boolean)
+			require.Equal(t, true, result.Value)
 		})
 
 		t.Run("invalid bool tag", func(t *testing.T) {
@@ -267,17 +325,25 @@ func TestTestfill(t *testing.T) {
 
 	t.Run("float", func(t *testing.T) {
 		t.Run("fills default value", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{})
+			type FloatTest struct {
+				Value float64 `testfill:"99.99"`
+			}
+
+			result, err := testfill.Fill(FloatTest{})
 			require.NoError(t, err)
 
-			require.Equal(t, 99.99, foo.Float)
+			require.Equal(t, 99.99, result.Value)
 		})
 
 		t.Run("does not fill when value is already filled", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{Float: 123.45})
+			type FloatTest struct {
+				Value float64 `testfill:"99.99"`
+			}
+
+			result, err := testfill.Fill(FloatTest{Value: 123.45})
 			require.NoError(t, err)
 
-			require.Equal(t, 123.45, foo.Float)
+			require.Equal(t, 123.45, result.Value)
 		})
 
 		t.Run("invalid float tag", func(t *testing.T) {
@@ -307,19 +373,27 @@ func TestTestfill(t *testing.T) {
 
 	t.Run("time", func(t *testing.T) {
 		t.Run("fills default value", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{})
+			type TimeTest struct {
+				Value time.Time `testfill:"2023-01-15T10:30:00Z"`
+			}
+
+			result, err := testfill.Fill(TimeTest{})
 			require.NoError(t, err)
 
 			expected, _ := time.Parse(time.RFC3339, "2023-01-15T10:30:00Z")
-			require.Equal(t, expected, foo.StdVO)
+			require.Equal(t, expected, result.Value)
 		})
 
 		t.Run("does not fill when value is already filled", func(t *testing.T) {
+			type TimeTest struct {
+				Value time.Time `testfill:"2023-01-15T10:30:00Z"`
+			}
+
 			customTime, _ := time.Parse(time.RFC3339, "2024-01-01T00:00:00Z")
-			foo, err := testfill.Fill(Foo{StdVO: customTime})
+			result, err := testfill.Fill(TimeTest{Value: customTime})
 			require.NoError(t, err)
 
-			require.Equal(t, customTime, foo.StdVO)
+			require.Equal(t, customTime, result.Value)
 		})
 
 		t.Run("invalid RFC3339 format", func(t *testing.T) {
@@ -350,18 +424,26 @@ func TestTestfill(t *testing.T) {
 	t.Run("array", func(t *testing.T) {
 		t.Run("array of string", func(t *testing.T) {
 			t.Run("fills default value", func(t *testing.T) {
-				foo, err := testfill.Fill(Foo{})
+				type ArrayTest struct {
+					Value []string `testfill:"tag1,tag2,tag3"`
+				}
+
+				result, err := testfill.Fill(ArrayTest{})
 				require.NoError(t, err)
 
-				require.Equal(t, []string{"tag1", "tag2", "tag3"}, foo.ArrayOfString)
+				require.Equal(t, []string{"tag1", "tag2", "tag3"}, result.Value)
 			})
 
 			t.Run("does not fill when value is already filled", func(t *testing.T) {
+				type ArrayTest struct {
+					Value []string `testfill:"tag1,tag2,tag3"`
+				}
+
 				custom := []string{"custom1", "custom2"}
-				foo, err := testfill.Fill(Foo{ArrayOfString: custom})
+				result, err := testfill.Fill(ArrayTest{Value: custom})
 				require.NoError(t, err)
 
-				require.Equal(t, custom, foo.ArrayOfString)
+				require.Equal(t, custom, result.Value)
 			})
 
 			t.Run("unsupported slice type", func(t *testing.T) {
@@ -381,19 +463,27 @@ func TestTestfill(t *testing.T) {
 	t.Run("map", func(t *testing.T) {
 		t.Run("map of string", func(t *testing.T) {
 			t.Run("fills default value", func(t *testing.T) {
-				foo, err := testfill.Fill(Foo{})
+				type MapTest struct {
+					Value map[string]string `testfill:"key1:value1,key2:value2"`
+				}
+
+				result, err := testfill.Fill(MapTest{})
 				require.NoError(t, err)
 
 				expected := map[string]string{"key1": "value1", "key2": "value2"}
-				require.Equal(t, expected, foo.MapOfString)
+				require.Equal(t, expected, result.Value)
 			})
 
 			t.Run("does not fill when value is already filled", func(t *testing.T) {
+				type MapTest struct {
+					Value map[string]string `testfill:"key1:value1,key2:value2"`
+				}
+
 				custom := map[string]string{"custom": "value"}
-				foo, err := testfill.Fill(Foo{MapOfString: custom})
+				result, err := testfill.Fill(MapTest{Value: custom})
 				require.NoError(t, err)
 
-				require.Equal(t, custom, foo.MapOfString)
+				require.Equal(t, custom, result.Value)
 			})
 
 			t.Run("invalid map format missing colon", func(t *testing.T) {
@@ -592,73 +682,105 @@ func TestTestfill(t *testing.T) {
 	t.Run("factory", func(t *testing.T) {
 		t.Run("custom type with factory function", func(t *testing.T) {
 			t.Run("fills using factory function when zero value", func(t *testing.T) {
-				foo, err := testfill.Fill(Foo{})
+				type CustomFactoryTest struct {
+					Value CustomVO `testfill:"factory:NewCustomVO"`
+				}
+
+				result, err := testfill.Fill(CustomFactoryTest{})
 				require.NoError(t, err)
 
 				expected := CustomVO{privateField: "factory default"}
-				require.Equal(t, expected, foo.CustomVO)
+				require.Equal(t, expected, result.Value)
 			})
 
 			t.Run("does not modify existing custom value", func(t *testing.T) {
+				type CustomFactoryTest struct {
+					Value CustomVO `testfill:"factory:NewCustomVO"`
+				}
+
 				custom := CustomVO{privateField: "existing value"}
-				foo, err := testfill.Fill(Foo{CustomVO: custom})
+				result, err := testfill.Fill(CustomFactoryTest{Value: custom})
 				require.NoError(t, err)
 
-				require.Equal(t, custom, foo.CustomVO)
+				require.Equal(t, custom, result.Value)
 			})
 		})
 
 		t.Run("custom type with factory function and arguments", func(t *testing.T) {
 			t.Run("fills using factory function with argument when zero value", func(t *testing.T) {
-				foo, err := testfill.Fill(Foo{})
+				type CustomFactoryWithArgTest struct {
+					Value CustomVO `testfill:"factory:NewCustomVOWithArg:custom argument"`
+				}
+
+				result, err := testfill.Fill(CustomFactoryWithArgTest{})
 				require.NoError(t, err)
 
 				expected := CustomVO{privateField: "custom argument"}
-				require.Equal(t, expected, foo.CustomVOWithArg)
+				require.Equal(t, expected, result.Value)
 			})
 
 			t.Run("does not modify existing custom value with arg factory", func(t *testing.T) {
+				type CustomFactoryWithArgTest struct {
+					Value CustomVO `testfill:"factory:NewCustomVOWithArg:custom argument"`
+				}
+
 				custom := CustomVO{privateField: "existing value"}
-				foo, err := testfill.Fill(Foo{CustomVOWithArg: custom})
+				result, err := testfill.Fill(CustomFactoryWithArgTest{Value: custom})
 				require.NoError(t, err)
 
-				require.Equal(t, custom, foo.CustomVOWithArg)
+				require.Equal(t, custom, result.Value)
 			})
 		})
 
 		t.Run("custom type with factory function and multiple arguments", func(t *testing.T) {
 			t.Run("fills using factory function with multiple arguments when zero value", func(t *testing.T) {
-				foo, err := testfill.Fill(Foo{})
+				type CustomFactoryMultiArgsTest struct {
+					Value CustomVO `testfill:"factory:NewCustomVOMultiArgs:prefix:42:suffix"`
+				}
+
+				result, err := testfill.Fill(CustomFactoryMultiArgsTest{})
 				require.NoError(t, err)
 
 				expected := CustomVO{privateField: "prefix-42-suffix"}
-				require.Equal(t, expected, foo.CustomVOMultiArgs)
+				require.Equal(t, expected, result.Value)
 			})
 
 			t.Run("does not modify existing custom value with multi-arg factory", func(t *testing.T) {
+				type CustomFactoryMultiArgsTest struct {
+					Value CustomVO `testfill:"factory:NewCustomVOMultiArgs:prefix:42:suffix"`
+				}
+
 				custom := CustomVO{privateField: "existing value"}
-				foo, err := testfill.Fill(Foo{CustomVOMultiArgs: custom})
+				result, err := testfill.Fill(CustomFactoryMultiArgsTest{Value: custom})
 				require.NoError(t, err)
 
-				require.Equal(t, custom, foo.CustomVOMultiArgs)
+				require.Equal(t, custom, result.Value)
 			})
 		})
 
 		t.Run("time with factory function", func(t *testing.T) {
 			t.Run("fills using ParseDate factory with string argument", func(t *testing.T) {
-				foo, err := testfill.Fill(Foo{})
+				type TimeFactoryTest struct {
+					Value time.Time `testfill:"factory:ParseDate:2024-12-25"`
+				}
+
+				result, err := testfill.Fill(TimeFactoryTest{})
 				require.NoError(t, err)
 
 				expected := time.Date(2024, 12, 25, 0, 0, 0, 0, time.UTC)
-				require.Equal(t, expected, foo.TimeWithRFCFactory)
+				require.Equal(t, expected, result.Value)
 			})
 
 			t.Run("does not modify existing date time value", func(t *testing.T) {
+				type TimeFactoryTest struct {
+					Value time.Time `testfill:"factory:ParseDate:2024-12-25"`
+				}
+
 				customTime := time.Date(2020, 6, 15, 12, 0, 0, 0, time.UTC)
-				foo, err := testfill.Fill(Foo{TimeWithRFCFactory: customTime})
+				result, err := testfill.Fill(TimeFactoryTest{Value: customTime})
 				require.NoError(t, err)
 
-				require.Equal(t, customTime, foo.TimeWithRFCFactory)
+				require.Equal(t, customTime, result.Value)
 			})
 		})
 
