@@ -10,30 +10,30 @@ import (
 
 // Tag constants
 const (
-	TagName     = "testfill"
-	TagFill     = "fill"
-	TagFactory  = "factory:"
+	TagName    = "testfill"
+	TagFill    = "fill"
+	TagFactory = "factory:"
 )
 
 // Error messages
 const (
-	ErrNotStruct           = "testfill: expected struct, got %T"
-	ErrNestedStruct        = "testfill: failed to fill nested struct %s: %w"
-	ErrNestedStructPtr     = "testfill: failed to fill nested struct pointer %s: %w"
-	ErrSetField            = "testfill: failed to set field %s: %w"
-	ErrUnsupportedStruct   = "unsupported struct type %s"
-	ErrUnsupportedField    = "unsupported field type %s"
-	ErrOnlyStringSlices    = "only string slices are supported"
-	ErrOnlyStringMaps      = "only string->string maps are supported"
-	ErrInvalidMapFormat    = "invalid map format: %s"
-	ErrFactoryNotFound     = "factory function %s not found"
-	ErrFactoryArgCount     = "factory function %s expects %d arguments, got %d"
-	ErrFactoryPanic        = "factory function panicked: %v"
-	ErrFactoryReturnCount  = "factory function %s must return exactly one value"
-	ErrFactoryReturnType   = "factory function %s returns %s, but field expects %s"
-	ErrFactoryArgConvert   = "factory function %s argument %d: %w"
-	ErrStringConvert       = "cannot convert %q to %s: %w"
-	ErrUnsupportedParam    = "unsupported parameter type %s for factory function arguments"
+	ErrNotStruct            = "testfill: expected struct, got %T"
+	ErrNestedStruct         = "testfill: failed to fill nested struct %s: %w"
+	ErrNestedStructPtr      = "testfill: failed to fill nested struct pointer %s: %w"
+	ErrSetField             = "testfill: failed to set field %s: %w"
+	ErrUnsupportedStruct    = "unsupported struct type %s"
+	ErrUnsupportedField     = "unsupported field type %s"
+	ErrUnsupportedSliceType = "unsupported slice element type %s"
+	ErrUnsupportedMapType   = "unsupported map type %s -> %s"
+	ErrInvalidMapFormat     = "invalid map format: %s"
+	ErrFactoryNotFound      = "factory function %s not found"
+	ErrFactoryArgCount      = "factory function %s expects %d arguments, got %d"
+	ErrFactoryPanic         = "factory function panicked: %v"
+	ErrFactoryReturnCount   = "factory function %s must return exactly one value"
+	ErrFactoryReturnType    = "factory function %s returns %s, but field expects %s"
+	ErrFactoryArgConvert    = "factory function %s argument %d: %w"
+	ErrStringConvert        = "cannot convert %q to %s: %w"
+	ErrUnsupportedParam     = "unsupported parameter type %s for factory function arguments"
 )
 
 // =====================================================
@@ -187,24 +187,93 @@ func setFieldValue(field reflect.Value, _ reflect.StructField, tag string) error
 }
 
 func setSliceValue(field reflect.Value, tag string) error {
-	if field.Type().Elem().Kind() != reflect.String {
-		return fmt.Errorf(ErrOnlyStringSlices)
+	elemType := field.Type().Elem()
+
+	// Handle struct slices with special "fill:count" syntax
+	if elemType.Kind() == reflect.Struct {
+		return setStructSliceValue(field, tag, elemType)
 	}
 
+	// Handle primitive slices
 	parts := strings.Split(tag, ",")
 	slice := reflect.MakeSlice(field.Type(), len(parts), len(parts))
 
 	for i, part := range parts {
-		slice.Index(i).SetString(strings.TrimSpace(part))
+		elemValue, err := convertStringToType(strings.TrimSpace(part), elemType)
+		if err != nil {
+			return fmt.Errorf(ErrUnsupportedSliceType, elemType.Kind())
+		}
+		slice.Index(i).Set(elemValue)
 	}
 
 	field.Set(slice)
 	return nil
 }
 
+func setStructSliceValue(field reflect.Value, tag string, elemType reflect.Type) error {
+	// Support "fill:count" syntax for struct slices
+	if strings.HasPrefix(tag, "fill:") {
+		countStr := strings.TrimPrefix(tag, "fill:")
+		count, err := strconv.Atoi(countStr)
+		if err != nil {
+			return fmt.Errorf("invalid slice count format: %s", tag)
+		}
+
+		slice := reflect.MakeSlice(field.Type(), count, count)
+		for i := 0; i < count; i++ {
+			elemValue := reflect.New(elemType).Elem()
+			if err := fillStruct(elemValue); err != nil {
+				return fmt.Errorf("failed to fill slice element %d: %w", i, err)
+			}
+			slice.Index(i).Set(elemValue)
+		}
+		field.Set(slice)
+		return nil
+	}
+
+	return fmt.Errorf(ErrUnsupportedSliceType, elemType.Kind())
+}
+
 func setMapValue(field reflect.Value, tag string) error {
-	if field.Type().Key().Kind() != reflect.String || field.Type().Elem().Kind() != reflect.String {
-		return fmt.Errorf(ErrOnlyStringMaps)
+	keyType := field.Type().Key()
+	valueType := field.Type().Elem()
+
+	// Handle struct value maps with special "key:fill" syntax
+	if valueType.Kind() == reflect.Struct {
+		return setStructMapValue(field, tag, keyType, valueType)
+	}
+
+	// Handle primitive maps
+	m := reflect.MakeMap(field.Type())
+	pairs := strings.Split(tag, ",")
+
+	for _, pair := range pairs {
+		kv := strings.Split(strings.TrimSpace(pair), ":")
+		if len(kv) != 2 {
+			return fmt.Errorf(ErrInvalidMapFormat, pair)
+		}
+
+		keyValue, err := convertStringToType(strings.TrimSpace(kv[0]), keyType)
+		if err != nil {
+			return fmt.Errorf(ErrUnsupportedMapType, keyType.Kind(), valueType.Kind())
+		}
+
+		valueValue, err := convertStringToType(strings.TrimSpace(kv[1]), valueType)
+		if err != nil {
+			return fmt.Errorf(ErrUnsupportedMapType, keyType.Kind(), valueType.Kind())
+		}
+
+		m.SetMapIndex(keyValue, valueValue)
+	}
+
+	field.Set(m)
+	return nil
+}
+
+func setStructMapValue(field reflect.Value, tag string, keyType, valueType reflect.Type) error {
+	// Only support string keys for struct value maps
+	if keyType.Kind() != reflect.String {
+		return fmt.Errorf(ErrUnsupportedMapType, keyType.Kind(), valueType.Kind())
 	}
 
 	m := reflect.MakeMap(field.Type())
@@ -215,9 +284,22 @@ func setMapValue(field reflect.Value, tag string) error {
 		if len(kv) != 2 {
 			return fmt.Errorf(ErrInvalidMapFormat, pair)
 		}
-		key := reflect.ValueOf(strings.TrimSpace(kv[0]))
-		value := reflect.ValueOf(strings.TrimSpace(kv[1]))
-		m.SetMapIndex(key, value)
+
+		keyStr := strings.TrimSpace(kv[0])
+		valueStr := strings.TrimSpace(kv[1])
+
+		keyValue := reflect.ValueOf(keyStr)
+
+		if valueStr == "fill" {
+			// Create and fill a new struct instance
+			structValue := reflect.New(valueType).Elem()
+			if err := fillStruct(structValue); err != nil {
+				return fmt.Errorf("failed to fill map value for key %s: %w", keyStr, err)
+			}
+			m.SetMapIndex(keyValue, structValue)
+		} else {
+			return fmt.Errorf("struct map values must use 'fill' syntax, got: %s", valueStr)
+		}
 	}
 
 	field.Set(m)
@@ -369,18 +451,18 @@ func getFactoryFunction(name string) interface{} {
 type typeConverter func(string) (interface{}, error)
 
 var typeConverters = map[reflect.Kind]typeConverter{
-	reflect.String: func(s string) (interface{}, error) { return s, nil },
-	reflect.Bool:   func(s string) (interface{}, error) { return strconv.ParseBool(s) },
-	reflect.Int:    func(s string) (interface{}, error) { return strconv.ParseInt(s, 10, 64) },
-	reflect.Int8:   func(s string) (interface{}, error) { return strconv.ParseInt(s, 10, 8) },
-	reflect.Int16:  func(s string) (interface{}, error) { return strconv.ParseInt(s, 10, 16) },
-	reflect.Int32:  func(s string) (interface{}, error) { return strconv.ParseInt(s, 10, 32) },
-	reflect.Int64:  func(s string) (interface{}, error) { return strconv.ParseInt(s, 10, 64) },
-	reflect.Uint:   func(s string) (interface{}, error) { return strconv.ParseUint(s, 10, 64) },
-	reflect.Uint8:  func(s string) (interface{}, error) { return strconv.ParseUint(s, 10, 8) },
-	reflect.Uint16: func(s string) (interface{}, error) { return strconv.ParseUint(s, 10, 16) },
-	reflect.Uint32: func(s string) (interface{}, error) { return strconv.ParseUint(s, 10, 32) },
-	reflect.Uint64: func(s string) (interface{}, error) { return strconv.ParseUint(s, 10, 64) },
+	reflect.String:  func(s string) (interface{}, error) { return s, nil },
+	reflect.Bool:    func(s string) (interface{}, error) { return strconv.ParseBool(s) },
+	reflect.Int:     func(s string) (interface{}, error) { return strconv.ParseInt(s, 10, 64) },
+	reflect.Int8:    func(s string) (interface{}, error) { return strconv.ParseInt(s, 10, 8) },
+	reflect.Int16:   func(s string) (interface{}, error) { return strconv.ParseInt(s, 10, 16) },
+	reflect.Int32:   func(s string) (interface{}, error) { return strconv.ParseInt(s, 10, 32) },
+	reflect.Int64:   func(s string) (interface{}, error) { return strconv.ParseInt(s, 10, 64) },
+	reflect.Uint:    func(s string) (interface{}, error) { return strconv.ParseUint(s, 10, 64) },
+	reflect.Uint8:   func(s string) (interface{}, error) { return strconv.ParseUint(s, 10, 8) },
+	reflect.Uint16:  func(s string) (interface{}, error) { return strconv.ParseUint(s, 10, 16) },
+	reflect.Uint32:  func(s string) (interface{}, error) { return strconv.ParseUint(s, 10, 32) },
+	reflect.Uint64:  func(s string) (interface{}, error) { return strconv.ParseUint(s, 10, 64) },
 	reflect.Float32: func(s string) (interface{}, error) { return strconv.ParseFloat(s, 32) },
 	reflect.Float64: func(s string) (interface{}, error) { return strconv.ParseFloat(s, 64) },
 }

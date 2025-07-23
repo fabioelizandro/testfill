@@ -55,8 +55,8 @@ func main() {
 - **Time**: `time.Time` (RFC3339 format)
 
 ### Complex Types
-- **Slices**: Only `[]string` supported (comma-separated values)
-- **Maps**: Only `map[string]string` supported (key:value pairs)
+- **Slices**: All primitive types + structs (comma-separated values or `fill:count`)
+- **Maps**: All combinations of primitive key/value types + struct values
 - **Pointers**: Pointers to any supported type
 - **Structs**: Nested structs with `fill` tag
 
@@ -111,14 +111,55 @@ person, _ := testfill.Fill(Person{})
 
 ### Slices and Maps
 
+#### Primitive Slices
 ```go
-type Tags struct {
-    Keywords []string          `testfill:"go,testing,automation"`
-    Metadata map[string]string `testfill:"version:1.0,author:john"`
+type Collections struct {
+    Strings []string  `testfill:"go,testing,automation"`
+    Numbers []int     `testfill:"1,2,3,42"`
+    Floats  []float64 `testfill:"1.1,2.5,3.14"`
+    Flags   []bool    `testfill:"true,false,true"`
 }
 
-tags, _ := testfill.Fill(Tags{})
-// Result: {Keywords:[go testing automation] Metadata:map[author:john version:1.0]}
+collections, _ := testfill.Fill(Collections{})
+// Result: {Strings:[go testing automation] Numbers:[1 2 3 42] Floats:[1.1 2.5 3.14] Flags:[true false true]}
+```
+
+#### Struct Slices
+```go
+type User struct {
+    Name string `testfill:"User"`
+    Age  int    `testfill:"25"`
+}
+
+type UserList struct {
+    Users []User `testfill:"fill:3"`
+}
+
+userList, _ := testfill.Fill(UserList{})
+// Result: {Users:[{Name:User Age:25} {Name:User Age:25} {Name:User Age:25}]}
+```
+
+#### Primitive Maps
+```go
+type Settings struct {
+    StringMap map[string]string `testfill:"version:1.0,author:john"`
+    IntMap    map[string]int    `testfill:"count:10,max:100"`
+    FloatMap  map[int]float64   `testfill:"1:1.1,2:2.5"`
+    BoolMap   map[string]bool   `testfill:"enabled:true,debug:false"`
+}
+
+settings, _ := testfill.Fill(Settings{})
+// Result: Multiple map types filled according to their tag values
+```
+
+#### Struct Value Maps
+```go
+type UserMap struct {
+    Users map[string]User `testfill:"admin:fill,guest:fill"`
+}
+
+userMap, _ := testfill.Fill(UserMap{})
+// Result: {Users:map[admin:{Name:User Age:25} guest:{Name:User Age:25}]}
 ```
 
 ### Time Values
@@ -248,8 +289,8 @@ Common error scenarios:
 
 ## Limitations
 
-- Only `[]string` slices are supported
-- Only `map[string]string` maps are supported
+- Struct value maps only support string keys (use `key:fill` syntax)
+- Struct slices require `fill:count` syntax (e.g., `fill:3` for 3 instances)
 - Interface fields cannot be filled
 - Channels and functions are not supported
 - Unexported fields are ignored

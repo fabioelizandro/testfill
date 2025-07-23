@@ -481,16 +481,76 @@ func TestTestfill(t *testing.T) {
 				require.Equal(t, custom, result.Value)
 			})
 
-			t.Run("unsupported slice type", func(t *testing.T) {
-				type UnsupportedSlice struct {
-					Value []int `testfill:"1,2,3"`
+			t.Run("int slice", func(t *testing.T) {
+				type IntSliceTest struct {
+					Value []int `testfill:"1,2,3,42"`
 				}
 
-				result, err := testfill.Fill(UnsupportedSlice{})
+				result, err := testfill.Fill(IntSliceTest{})
+				require.NoError(t, err)
 
-				expectedError := "testfill: failed to set field Value: only string slices are supported"
+				require.Equal(t, []int{1, 2, 3, 42}, result.Value)
+			})
+
+			t.Run("float slice", func(t *testing.T) {
+				type FloatSliceTest struct {
+					Value []float64 `testfill:"1.1,2.5,3.14"`
+				}
+
+				result, err := testfill.Fill(FloatSliceTest{})
+				require.NoError(t, err)
+
+				require.Equal(t, []float64{1.1, 2.5, 3.14}, result.Value)
+			})
+
+			t.Run("bool slice", func(t *testing.T) {
+				type BoolSliceTest struct {
+					Value []bool `testfill:"true,false,true"`
+				}
+
+				result, err := testfill.Fill(BoolSliceTest{})
+				require.NoError(t, err)
+
+				require.Equal(t, []bool{true, false, true}, result.Value)
+			})
+
+			t.Run("struct slice with fill syntax", func(t *testing.T) {
+				type StructSliceTest struct {
+					Value []Bar `testfill:"fill:2"`
+				}
+
+				result, err := testfill.Fill(StructSliceTest{})
+				require.NoError(t, err)
+
+				expected := []Bar{
+					{Integer: 42, String: "Olivie Smith"},
+					{Integer: 42, String: "Olivie Smith"},
+				}
+				require.Equal(t, expected, result.Value)
+			})
+
+			t.Run("invalid struct slice count", func(t *testing.T) {
+				type InvalidStructSlice struct {
+					Value []Bar `testfill:"fill:not_a_number"`
+				}
+
+				result, err := testfill.Fill(InvalidStructSlice{})
+
+				expectedError := "testfill: failed to set field Value: invalid slice count format: fill:not_a_number"
 				require.EqualError(t, err, expectedError)
-				require.Equal(t, UnsupportedSlice{}, result)
+				require.Equal(t, InvalidStructSlice{}, result)
+			})
+
+			t.Run("invalid int conversion in slice", func(t *testing.T) {
+				type InvalidIntSlice struct {
+					Value []int `testfill:"1,not_a_number,3"`
+				}
+
+				result, err := testfill.Fill(InvalidIntSlice{})
+
+				expectedError := "testfill: failed to set field Value: unsupported slice element type int"
+				require.EqualError(t, err, expectedError)
+				require.Equal(t, InvalidIntSlice{}, result)
 			})
 		})
 	})
@@ -545,16 +605,115 @@ func TestTestfill(t *testing.T) {
 				require.Equal(t, InvalidMap{}, result)
 			})
 
-			t.Run("unsupported map key type", func(t *testing.T) {
-				type UnsupportedMap struct {
-					Value map[int]string `testfill:"1:value1,2:value2"`
+			t.Run("int key string value map", func(t *testing.T) {
+				type IntStringMapTest struct {
+					Value map[int]string `testfill:"1:value1,2:value2,42:answer"`
 				}
 
-				result, err := testfill.Fill(UnsupportedMap{})
+				result, err := testfill.Fill(IntStringMapTest{})
+				require.NoError(t, err)
 
-				expectedError := "testfill: failed to set field Value: only string->string maps are supported"
+				expected := map[int]string{1: "value1", 2: "value2", 42: "answer"}
+				require.Equal(t, expected, result.Value)
+			})
+
+			t.Run("string int map", func(t *testing.T) {
+				type StringIntMapTest struct {
+					Value map[string]int `testfill:"count:10,max:100,min:1"`
+				}
+
+				result, err := testfill.Fill(StringIntMapTest{})
+				require.NoError(t, err)
+
+				expected := map[string]int{"count": 10, "max": 100, "min": 1}
+				require.Equal(t, expected, result.Value)
+			})
+
+			t.Run("int float map", func(t *testing.T) {
+				type IntFloatMapTest struct {
+					Value map[int]float64 `testfill:"1:1.1,2:2.5,3:3.14"`
+				}
+
+				result, err := testfill.Fill(IntFloatMapTest{})
+				require.NoError(t, err)
+
+				expected := map[int]float64{1: 1.1, 2: 2.5, 3: 3.14}
+				require.Equal(t, expected, result.Value)
+			})
+
+			t.Run("string bool map", func(t *testing.T) {
+				type StringBoolMapTest struct {
+					Value map[string]bool `testfill:"enabled:true,debug:false,verbose:true"`
+				}
+
+				result, err := testfill.Fill(StringBoolMapTest{})
+				require.NoError(t, err)
+
+				expected := map[string]bool{"enabled": true, "debug": false, "verbose": true}
+				require.Equal(t, expected, result.Value)
+			})
+
+			t.Run("struct value map with fill syntax", func(t *testing.T) {
+				type StructMapTest struct {
+					Value map[string]Bar `testfill:"first:fill,second:fill"`
+				}
+
+				result, err := testfill.Fill(StructMapTest{})
+				require.NoError(t, err)
+
+				expected := map[string]Bar{
+					"first":  {Integer: 42, String: "Olivie Smith"},
+					"second": {Integer: 42, String: "Olivie Smith"},
+				}
+				require.Equal(t, expected, result.Value)
+			})
+
+			t.Run("unsupported struct map key type", func(t *testing.T) {
+				type UnsupportedStructMap struct {
+					Value map[int]Bar `testfill:"1:fill,2:fill"`
+				}
+
+				result, err := testfill.Fill(UnsupportedStructMap{})
+
+				expectedError := "testfill: failed to set field Value: unsupported map type int -> struct"
 				require.EqualError(t, err, expectedError)
-				require.Equal(t, UnsupportedMap{}, result)
+				require.Equal(t, UnsupportedStructMap{}, result)
+			})
+
+			t.Run("invalid struct map value syntax", func(t *testing.T) {
+				type InvalidStructMap struct {
+					Value map[string]Bar `testfill:"key1:invalid,key2:fill"`
+				}
+
+				result, err := testfill.Fill(InvalidStructMap{})
+
+				expectedError := "testfill: failed to set field Value: struct map values must use 'fill' syntax, got: invalid"
+				require.EqualError(t, err, expectedError)
+				require.Equal(t, InvalidStructMap{}, result)
+			})
+
+			t.Run("invalid key conversion in map", func(t *testing.T) {
+				type InvalidKeyMap struct {
+					Value map[int]string `testfill:"not_a_number:value1,2:value2"`
+				}
+
+				result, err := testfill.Fill(InvalidKeyMap{})
+
+				expectedError := "testfill: failed to set field Value: unsupported map type int -> string"
+				require.EqualError(t, err, expectedError)
+				require.Equal(t, InvalidKeyMap{}, result)
+			})
+
+			t.Run("invalid value conversion in map", func(t *testing.T) {
+				type InvalidValueMap struct {
+					Value map[string]int `testfill:"key1:not_a_number,key2:42"`
+				}
+
+				result, err := testfill.Fill(InvalidValueMap{})
+
+				expectedError := "testfill: failed to set field Value: unsupported map type string -> int"
+				require.EqualError(t, err, expectedError)
+				require.Equal(t, InvalidValueMap{}, result)
 			})
 		})
 	})
