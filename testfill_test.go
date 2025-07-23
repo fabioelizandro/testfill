@@ -218,300 +218,461 @@ func TestTestfill(t *testing.T) {
 		})
 	})
 
-	t.Run("array of string", func(t *testing.T) {
-		t.Run("fills default value", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{})
-			require.NoError(t, err)
+	t.Run("array", func(t *testing.T) {
+		t.Run("array of string", func(t *testing.T) {
+			t.Run("fills default value", func(t *testing.T) {
+				foo, err := testfill.Fill(Foo{})
+				require.NoError(t, err)
 
-			require.Equal(t, []string{"tag1", "tag2", "tag3"}, foo.ArrayOfString)
+				require.Equal(t, []string{"tag1", "tag2", "tag3"}, foo.ArrayOfString)
+			})
+
+			t.Run("does not fill when value is already filled", func(t *testing.T) {
+				custom := []string{"custom1", "custom2"}
+				foo, err := testfill.Fill(Foo{ArrayOfString: custom})
+				require.NoError(t, err)
+
+				require.Equal(t, custom, foo.ArrayOfString)
+			})
+
+			t.Run("unsupported slice type", func(t *testing.T) {
+				type UnsupportedSlice struct {
+					Value []int `testfill:"1,2,3"`
+				}
+
+				result, err := testfill.Fill(UnsupportedSlice{})
+
+				expectedError := "testfill: failed to set field Value: only string slices are supported"
+				require.EqualError(t, err, expectedError)
+				require.Equal(t, UnsupportedSlice{}, result)
+			})
+		})
+	})
+
+	t.Run("map", func(t *testing.T) {
+		t.Run("map of string", func(t *testing.T) {
+			t.Run("fills default value", func(t *testing.T) {
+				foo, err := testfill.Fill(Foo{})
+				require.NoError(t, err)
+
+				expected := map[string]string{"key1": "value1", "key2": "value2"}
+				require.Equal(t, expected, foo.MapOfString)
+			})
+
+			t.Run("does not fill when value is already filled", func(t *testing.T) {
+				custom := map[string]string{"custom": "value"}
+				foo, err := testfill.Fill(Foo{MapOfString: custom})
+				require.NoError(t, err)
+
+				require.Equal(t, custom, foo.MapOfString)
+			})
+
+			t.Run("invalid map format missing colon", func(t *testing.T) {
+				type InvalidMap struct {
+					Value map[string]string `testfill:"key1_value1,key2:value2"`
+				}
+
+				result, err := testfill.Fill(InvalidMap{})
+
+				expectedError := "testfill: failed to set field Value: invalid map format: key1_value1"
+				require.EqualError(t, err, expectedError)
+				require.Equal(t, InvalidMap{}, result)
+			})
+
+			t.Run("invalid map format too many colons", func(t *testing.T) {
+				type InvalidMap struct {
+					Value map[string]string `testfill:"key1:value1:extra,key2:value2"`
+				}
+
+				result, err := testfill.Fill(InvalidMap{})
+
+				expectedError := "testfill: failed to set field Value: invalid map format: key1:value1:extra"
+				require.EqualError(t, err, expectedError)
+				require.Equal(t, InvalidMap{}, result)
+			})
+
+			t.Run("unsupported map key type", func(t *testing.T) {
+				type UnsupportedMap struct {
+					Value map[int]string `testfill:"1:value1,2:value2"`
+				}
+
+				result, err := testfill.Fill(UnsupportedMap{})
+
+				expectedError := "testfill: failed to set field Value: only string->string maps are supported"
+				require.EqualError(t, err, expectedError)
+				require.Equal(t, UnsupportedMap{}, result)
+			})
+		})
+	})
+
+	t.Run("struct", func(t *testing.T) {
+		t.Run("nested struct with fill tag", func(t *testing.T) {
+			t.Run("recursively fills nested struct fields", func(t *testing.T) {
+				foo, err := testfill.Fill(Foo{})
+				require.NoError(t, err)
+
+				expected := Bar{Integer: 42, String: "Olivie Smith"}
+				require.Equal(t, expected, foo.NestedStructWithFillTag)
+			})
+
+			t.Run("fills zero fields in partially filled struct", func(t *testing.T) {
+				partial := Bar{Integer: 999}
+				foo, err := testfill.Fill(Foo{NestedStructWithFillTag: partial})
+				require.NoError(t, err)
+
+				expected := Bar{Integer: 999, String: "Olivie Smith"}
+				require.Equal(t, expected, foo.NestedStructWithFillTag)
+			})
+
+			t.Run("does not modify fully filled struct", func(t *testing.T) {
+				custom := Bar{Integer: 999, String: "custom"}
+				foo, err := testfill.Fill(Foo{NestedStructWithFillTag: custom})
+				require.NoError(t, err)
+
+				require.Equal(t, custom, foo.NestedStructWithFillTag)
+			})
 		})
 
-		t.Run("does not fill when value is already filled", func(t *testing.T) {
-			custom := []string{"custom1", "custom2"}
-			foo, err := testfill.Fill(Foo{ArrayOfString: custom})
-			require.NoError(t, err)
+		t.Run("nested struct without fill tag", func(t *testing.T) {
+			t.Run("leaves field as zero value", func(t *testing.T) {
+				foo, err := testfill.Fill(Foo{})
+				require.NoError(t, err)
 
-			require.Equal(t, custom, foo.ArrayOfString)
+				require.Equal(t, Bar{}, foo.NestedStructWithoutTag)
+			})
+
+			t.Run("does not modify existing struct value", func(t *testing.T) {
+				custom := Bar{Integer: 999, String: "custom"}
+				foo, err := testfill.Fill(Foo{NestedStructWithoutTag: custom})
+				require.NoError(t, err)
+
+				require.Equal(t, custom, foo.NestedStructWithoutTag)
+			})
 		})
 
-		t.Run("unsupported slice type", func(t *testing.T) {
-			type UnsupportedSlice struct {
-				Value []int `testfill:"1,2,3"`
+		t.Run("nested pointer with fill tag", func(t *testing.T) {
+			t.Run("creates and fills pointer when nil", func(t *testing.T) {
+				foo, err := testfill.Fill(Foo{})
+				require.NoError(t, err)
+
+				expected := &Bar{Integer: 42, String: "Olivie Smith"}
+				require.Equal(t, expected, foo.NestedPointerWithFillTag)
+			})
+
+			t.Run("fills existing pointer struct", func(t *testing.T) {
+				custom := &Bar{}
+				foo, err := testfill.Fill(Foo{NestedPointerWithFillTag: custom})
+				require.NoError(t, err)
+
+				expected := &Bar{Integer: 42, String: "Olivie Smith"}
+				require.Equal(t, expected, foo.NestedPointerWithFillTag)
+			})
+
+			t.Run("fills zero fields in partially filled pointer struct", func(t *testing.T) {
+				custom := &Bar{Integer: 999}
+				foo, err := testfill.Fill(Foo{NestedPointerWithFillTag: custom})
+				require.NoError(t, err)
+
+				expected := &Bar{Integer: 999, String: "Olivie Smith"}
+				require.Equal(t, expected, foo.NestedPointerWithFillTag)
+			})
+		})
+
+		t.Run("nested pointer without fill tag", func(t *testing.T) {
+			t.Run("leaves field as nil", func(t *testing.T) {
+				foo, err := testfill.Fill(Foo{})
+				require.NoError(t, err)
+
+				require.Nil(t, foo.NestedPointerWithoutTag)
+			})
+
+			t.Run("does not modify existing pointer value", func(t *testing.T) {
+				custom := &Bar{Integer: 999, String: "custom"}
+				foo, err := testfill.Fill(Foo{NestedPointerWithoutTag: custom})
+				require.NoError(t, err)
+
+				require.Equal(t, custom, foo.NestedPointerWithoutTag)
+			})
+		})
+
+		t.Run("deeply nested struct with fill tag", func(t *testing.T) {
+			t.Run("recursively fills all nested levels", func(t *testing.T) {
+				foo, err := testfill.Fill(Foo{})
+				require.NoError(t, err)
+
+				expected := Baz{
+					Name:         "Deep Nested",
+					Value:        100,
+					NestedBar:    Bar{Integer: 42, String: "Olivie Smith"},
+					NonFilledBar: Bar{}, // This should remain empty since no fill tag
+				}
+				require.Equal(t, expected, foo.DeeplyNestedWithFillTag)
+			})
+
+			t.Run("fills zero fields while preserving existing values", func(t *testing.T) {
+				partial := Baz{
+					Name:      "Custom Name",
+					NestedBar: Bar{Integer: 555},
+				}
+				foo, err := testfill.Fill(Foo{DeeplyNestedWithFillTag: partial})
+				require.NoError(t, err)
+
+				expected := Baz{
+					Name:         "Custom Name",
+					Value:        100,
+					NestedBar:    Bar{Integer: 555, String: "Olivie Smith"},
+					NonFilledBar: Bar{}, // This should remain empty
+				}
+				require.Equal(t, expected, foo.DeeplyNestedWithFillTag)
+			})
+		})
+
+		t.Run("deeply nested struct without fill tag", func(t *testing.T) {
+			t.Run("leaves field as zero value", func(t *testing.T) {
+				foo, err := testfill.Fill(Foo{})
+				require.NoError(t, err)
+
+				require.Equal(t, Baz{}, foo.DeeplyNestedWithoutTag)
+			})
+
+			t.Run("does not modify existing struct value", func(t *testing.T) {
+				custom := Baz{Name: "Custom", Value: 999}
+				foo, err := testfill.Fill(Foo{DeeplyNestedWithoutTag: custom})
+				require.NoError(t, err)
+
+				require.Equal(t, custom, foo.DeeplyNestedWithoutTag)
+			})
+		})
+
+		t.Run("unsupported struct type", func(t *testing.T) {
+			type CustomStruct struct {
+				Field string
+			}
+			type UnsupportedStruct struct {
+				Value CustomStruct `testfill:"some_value"`
 			}
 
-			result, err := testfill.Fill(UnsupportedSlice{})
+			result, err := testfill.Fill(UnsupportedStruct{})
 
-			expectedError := "testfill: failed to set field Value: only string slices are supported"
+			expectedError := "testfill: failed to set field Value: unsupported struct type testfill_test.CustomStruct"
 			require.EqualError(t, err, expectedError)
-			require.Equal(t, UnsupportedSlice{}, result)
+			require.Equal(t, UnsupportedStruct{}, result)
 		})
 	})
 
-	t.Run("map of string", func(t *testing.T) {
-		t.Run("fills default value", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{})
-			require.NoError(t, err)
+	t.Run("factory", func(t *testing.T) {
+		t.Run("custom type with factory function", func(t *testing.T) {
+			t.Run("fills using factory function when zero value", func(t *testing.T) {
+				foo, err := testfill.Fill(Foo{})
+				require.NoError(t, err)
 
-			expected := map[string]string{"key1": "value1", "key2": "value2"}
-			require.Equal(t, expected, foo.MapOfString)
+				expected := CustomVO{privateField: "factory default"}
+				require.Equal(t, expected, foo.CustomVO)
+			})
+
+			t.Run("does not modify existing custom value", func(t *testing.T) {
+				custom := CustomVO{privateField: "existing value"}
+				foo, err := testfill.Fill(Foo{CustomVO: custom})
+				require.NoError(t, err)
+
+				require.Equal(t, custom, foo.CustomVO)
+			})
 		})
 
-		t.Run("does not fill when value is already filled", func(t *testing.T) {
-			custom := map[string]string{"custom": "value"}
-			foo, err := testfill.Fill(Foo{MapOfString: custom})
-			require.NoError(t, err)
+		t.Run("custom type with factory function and arguments", func(t *testing.T) {
+			t.Run("fills using factory function with argument when zero value", func(t *testing.T) {
+				foo, err := testfill.Fill(Foo{})
+				require.NoError(t, err)
 
-			require.Equal(t, custom, foo.MapOfString)
+				expected := CustomVO{privateField: "custom argument"}
+				require.Equal(t, expected, foo.CustomVOWithArg)
+			})
+
+			t.Run("does not modify existing custom value with arg factory", func(t *testing.T) {
+				custom := CustomVO{privateField: "existing value"}
+				foo, err := testfill.Fill(Foo{CustomVOWithArg: custom})
+				require.NoError(t, err)
+
+				require.Equal(t, custom, foo.CustomVOWithArg)
+			})
 		})
 
-		t.Run("invalid map format missing colon", func(t *testing.T) {
-			type InvalidMap struct {
-				Value map[string]string `testfill:"key1_value1,key2:value2"`
-			}
+		t.Run("custom type with factory function and multiple arguments", func(t *testing.T) {
+			t.Run("fills using factory function with multiple arguments when zero value", func(t *testing.T) {
+				foo, err := testfill.Fill(Foo{})
+				require.NoError(t, err)
 
-			result, err := testfill.Fill(InvalidMap{})
+				expected := CustomVO{privateField: "prefix-42-suffix"}
+				require.Equal(t, expected, foo.CustomVOMultiArgs)
+			})
 
-			expectedError := "testfill: failed to set field Value: invalid map format: key1_value1"
-			require.EqualError(t, err, expectedError)
-			require.Equal(t, InvalidMap{}, result)
+			t.Run("does not modify existing custom value with multi-arg factory", func(t *testing.T) {
+				custom := CustomVO{privateField: "existing value"}
+				foo, err := testfill.Fill(Foo{CustomVOMultiArgs: custom})
+				require.NoError(t, err)
+
+				require.Equal(t, custom, foo.CustomVOMultiArgs)
+			})
 		})
 
-		t.Run("invalid map format too many colons", func(t *testing.T) {
-			type InvalidMap struct {
-				Value map[string]string `testfill:"key1:value1:extra,key2:value2"`
-			}
+		t.Run("time with factory function", func(t *testing.T) {
+			t.Run("fills using ParseDate factory with string argument", func(t *testing.T) {
+				foo, err := testfill.Fill(Foo{})
+				require.NoError(t, err)
 
-			result, err := testfill.Fill(InvalidMap{})
+				expected := time.Date(2024, 12, 25, 0, 0, 0, 0, time.UTC)
+				require.Equal(t, expected, foo.TimeWithRFCFactory)
+			})
 
-			expectedError := "testfill: failed to set field Value: invalid map format: key1:value1:extra"
-			require.EqualError(t, err, expectedError)
-			require.Equal(t, InvalidMap{}, result)
+			t.Run("does not modify existing date time value", func(t *testing.T) {
+				customTime := time.Date(2020, 6, 15, 12, 0, 0, 0, time.UTC)
+				foo, err := testfill.Fill(Foo{TimeWithRFCFactory: customTime})
+				require.NoError(t, err)
+
+				require.Equal(t, customTime, foo.TimeWithRFCFactory)
+			})
 		})
 
-		t.Run("unsupported map key type", func(t *testing.T) {
-			type UnsupportedMap struct {
-				Value map[int]string `testfill:"1:value1,2:value2"`
-			}
+		t.Run("factory function error handling", func(t *testing.T) {
+			t.Run("when factory function panics returns error", func(t *testing.T) {
+				type PanicTest struct {
+					CustomVOWithPanic CustomVO `testfill:"factory:PanicFactory"`
+				}
 
-			result, err := testfill.Fill(UnsupportedMap{})
+				result, err := testfill.Fill(PanicTest{})
 
-			expectedError := "testfill: failed to set field Value: only string->string maps are supported"
-			require.EqualError(t, err, expectedError)
-			require.Equal(t, UnsupportedMap{}, result)
-		})
-	})
+				expectedError := "testfill: failed to set field CustomVOWithPanic: factory function panicked: this factory always panics"
+				require.EqualError(t, err, expectedError)
+				require.Equal(t, PanicTest{}, result)
+			})
 
-	t.Run("nested struct with fill tag", func(t *testing.T) {
-		t.Run("recursively fills nested struct fields", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{})
-			require.NoError(t, err)
+			t.Run("unregistered factory function", func(t *testing.T) {
+				type UnregisteredFactory struct {
+					Value CustomVO `testfill:"factory:NonExistentFactory"`
+				}
 
-			expected := Bar{Integer: 42, String: "Olivie Smith"}
-			require.Equal(t, expected, foo.NestedStructWithFillTag)
-		})
+				result, err := testfill.Fill(UnregisteredFactory{})
 
-		t.Run("fills zero fields in partially filled struct", func(t *testing.T) {
-			partial := Bar{Integer: 999}
-			foo, err := testfill.Fill(Foo{NestedStructWithFillTag: partial})
-			require.NoError(t, err)
+				expectedError := "testfill: failed to set field Value: factory function NonExistentFactory not found"
+				require.EqualError(t, err, expectedError)
+				require.Equal(t, UnregisteredFactory{}, result)
+			})
 
-			expected := Bar{Integer: 999, String: "Olivie Smith"}
-			require.Equal(t, expected, foo.NestedStructWithFillTag)
-		})
+			t.Run("wrong argument count", func(t *testing.T) {
+				testfill.RegisterFactory("NoArgsFactory", func() CustomVO {
+					return CustomVO{}
+				})
 
-		t.Run("does not modify fully filled struct", func(t *testing.T) {
-			custom := Bar{Integer: 999, String: "custom"}
-			foo, err := testfill.Fill(Foo{NestedStructWithFillTag: custom})
-			require.NoError(t, err)
+				t.Run("too many arguments", func(t *testing.T) {
+					type TooManyArgs struct {
+						Value CustomVO `testfill:"factory:NoArgsFactory:extra:arg"`
+					}
 
-			require.Equal(t, custom, foo.NestedStructWithFillTag)
-		})
-	})
+					result, err := testfill.Fill(TooManyArgs{})
 
-	t.Run("nested struct without fill tag", func(t *testing.T) {
-		t.Run("leaves field as zero value", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{})
-			require.NoError(t, err)
+					expectedError := "testfill: failed to set field Value: factory function NoArgsFactory expects 0 arguments, got 2"
+					require.EqualError(t, err, expectedError)
+					require.Equal(t, TooManyArgs{}, result)
+				})
 
-			require.Equal(t, Bar{}, foo.NestedStructWithoutTag)
-		})
+				t.Run("too few arguments", func(t *testing.T) {
+					type TooFewArgs struct {
+						Value CustomVO `testfill:"factory:NewCustomVOWithArg"`
+					}
 
-		t.Run("does not modify existing struct value", func(t *testing.T) {
-			custom := Bar{Integer: 999, String: "custom"}
-			foo, err := testfill.Fill(Foo{NestedStructWithoutTag: custom})
-			require.NoError(t, err)
+					result, err := testfill.Fill(TooFewArgs{})
 
-			require.Equal(t, custom, foo.NestedStructWithoutTag)
-		})
-	})
+					expectedError := "testfill: failed to set field Value: factory function NewCustomVOWithArg expects 1 arguments, got 0"
+					require.EqualError(t, err, expectedError)
+					require.Equal(t, TooFewArgs{}, result)
+				})
+			})
 
-	t.Run("nested pointer with fill tag", func(t *testing.T) {
-		t.Run("creates and fills pointer when nil", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{})
-			require.NoError(t, err)
+			t.Run("wrong return type", func(t *testing.T) {
+				testfill.RegisterFactory("WrongReturnType", func() string {
+					return "not a CustomVO"
+				})
 
-			expected := &Bar{Integer: 42, String: "Olivie Smith"}
-			require.Equal(t, expected, foo.NestedPointerWithFillTag)
-		})
+				type WrongReturnType struct {
+					Value CustomVO `testfill:"factory:WrongReturnType"`
+				}
 
-		t.Run("fills existing pointer struct", func(t *testing.T) {
-			custom := &Bar{}
-			foo, err := testfill.Fill(Foo{NestedPointerWithFillTag: custom})
-			require.NoError(t, err)
+				result, err := testfill.Fill(WrongReturnType{})
 
-			expected := &Bar{Integer: 42, String: "Olivie Smith"}
-			require.Equal(t, expected, foo.NestedPointerWithFillTag)
-		})
+				expectedError := "testfill: failed to set field Value: factory function WrongReturnType returns string, but field expects testfill_test.CustomVO"
+				require.EqualError(t, err, expectedError)
+				require.Equal(t, WrongReturnType{}, result)
+			})
 
-		t.Run("fills zero fields in partially filled pointer struct", func(t *testing.T) {
-			custom := &Bar{Integer: 999}
-			foo, err := testfill.Fill(Foo{NestedPointerWithFillTag: custom})
-			require.NoError(t, err)
+			t.Run("multiple return values", func(t *testing.T) {
+				testfill.RegisterFactory("MultipleReturns", func() (CustomVO, error) {
+					return CustomVO{}, nil
+				})
 
-			expected := &Bar{Integer: 999, String: "Olivie Smith"}
-			require.Equal(t, expected, foo.NestedPointerWithFillTag)
-		})
-	})
+				type MultipleReturns struct {
+					Value CustomVO `testfill:"factory:MultipleReturns"`
+				}
 
-	t.Run("nested pointer without fill tag", func(t *testing.T) {
-		t.Run("leaves field as nil", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{})
-			require.NoError(t, err)
+				result, err := testfill.Fill(MultipleReturns{})
 
-			require.Nil(t, foo.NestedPointerWithoutTag)
-		})
+				expectedError := "testfill: failed to set field Value: factory function MultipleReturns must return exactly one value"
+				require.EqualError(t, err, expectedError)
+				require.Equal(t, MultipleReturns{}, result)
+			})
 
-		t.Run("does not modify existing pointer value", func(t *testing.T) {
-			custom := &Bar{Integer: 999, String: "custom"}
-			foo, err := testfill.Fill(Foo{NestedPointerWithoutTag: custom})
-			require.NoError(t, err)
+			t.Run("argument conversion errors", func(t *testing.T) {
+				testfill.RegisterFactory("IntArgFactory", func(num int) CustomVO {
+					return CustomVO{}
+				})
 
-			require.Equal(t, custom, foo.NestedPointerWithoutTag)
-		})
-	})
+				t.Run("invalid int conversion", func(t *testing.T) {
+					type InvalidIntArg struct {
+						Value CustomVO `testfill:"factory:IntArgFactory:not_a_number"`
+					}
 
-	t.Run("deeply nested struct with fill tag", func(t *testing.T) {
-		t.Run("recursively fills all nested levels", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{})
-			require.NoError(t, err)
+					result, err := testfill.Fill(InvalidIntArg{})
 
-			expected := Baz{
-				Name:         "Deep Nested",
-				Value:        100,
-				NestedBar:    Bar{Integer: 42, String: "Olivie Smith"},
-				NonFilledBar: Bar{}, // This should remain empty since no fill tag
-			}
-			require.Equal(t, expected, foo.DeeplyNestedWithFillTag)
-		})
+					expectedError := "testfill: failed to set field Value: factory function IntArgFactory argument 0: cannot convert \"not_a_number\" to int: strconv.ParseInt: parsing \"not_a_number\": invalid syntax"
+					require.EqualError(t, err, expectedError)
+					require.Equal(t, InvalidIntArg{}, result)
+				})
 
-		t.Run("fills zero fields while preserving existing values", func(t *testing.T) {
-			partial := Baz{
-				Name:      "Custom Name",
-				NestedBar: Bar{Integer: 555},
-			}
-			foo, err := testfill.Fill(Foo{DeeplyNestedWithFillTag: partial})
-			require.NoError(t, err)
+				testfill.RegisterFactory("FloatArgFactory", func(num float64) CustomVO {
+					return CustomVO{}
+				})
 
-			expected := Baz{
-				Name:         "Custom Name",
-				Value:        100,
-				NestedBar:    Bar{Integer: 555, String: "Olivie Smith"},
-				NonFilledBar: Bar{}, // This should remain empty
-			}
-			require.Equal(t, expected, foo.DeeplyNestedWithFillTag)
-		})
-	})
+				t.Run("invalid float conversion", func(t *testing.T) {
+					type InvalidFloatArg struct {
+						Value CustomVO `testfill:"factory:FloatArgFactory:not_a_float"`
+					}
 
-	t.Run("deeply nested struct without fill tag", func(t *testing.T) {
-		t.Run("leaves field as zero value", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{})
-			require.NoError(t, err)
+					result, err := testfill.Fill(InvalidFloatArg{})
 
-			require.Equal(t, Baz{}, foo.DeeplyNestedWithoutTag)
-		})
+					expectedError := "testfill: failed to set field Value: factory function FloatArgFactory argument 0: cannot convert \"not_a_float\" to float64: strconv.ParseFloat: parsing \"not_a_float\": invalid syntax"
+					require.EqualError(t, err, expectedError)
+					require.Equal(t, InvalidFloatArg{}, result)
+				})
 
-		t.Run("does not modify existing struct value", func(t *testing.T) {
-			custom := Baz{Name: "Custom", Value: 999}
-			foo, err := testfill.Fill(Foo{DeeplyNestedWithoutTag: custom})
-			require.NoError(t, err)
+				testfill.RegisterFactory("BoolArgFactory", func(flag bool) CustomVO {
+					return CustomVO{}
+				})
 
-			require.Equal(t, custom, foo.DeeplyNestedWithoutTag)
-		})
-	})
+				t.Run("invalid bool conversion", func(t *testing.T) {
+					type InvalidBoolArg struct {
+						Value CustomVO `testfill:"factory:BoolArgFactory:not_a_bool"`
+					}
 
-	t.Run("custom type with factory function", func(t *testing.T) {
-		t.Run("fills using factory function when zero value", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{})
-			require.NoError(t, err)
+					result, err := testfill.Fill(InvalidBoolArg{})
 
-			expected := CustomVO{privateField: "factory default"}
-			require.Equal(t, expected, foo.CustomVO)
-		})
-
-		t.Run("does not modify existing custom value", func(t *testing.T) {
-			custom := CustomVO{privateField: "existing value"}
-			foo, err := testfill.Fill(Foo{CustomVO: custom})
-			require.NoError(t, err)
-
-			require.Equal(t, custom, foo.CustomVO)
-		})
-	})
-
-	t.Run("custom type with factory function and arguments", func(t *testing.T) {
-		t.Run("fills using factory function with argument when zero value", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{})
-			require.NoError(t, err)
-
-			expected := CustomVO{privateField: "custom argument"}
-			require.Equal(t, expected, foo.CustomVOWithArg)
-		})
-
-		t.Run("does not modify existing custom value with arg factory", func(t *testing.T) {
-			custom := CustomVO{privateField: "existing value"}
-			foo, err := testfill.Fill(Foo{CustomVOWithArg: custom})
-			require.NoError(t, err)
-
-			require.Equal(t, custom, foo.CustomVOWithArg)
+					expectedError := "testfill: failed to set field Value: factory function BoolArgFactory argument 0: cannot convert \"not_a_bool\" to bool: strconv.ParseBool: parsing \"not_a_bool\": invalid syntax"
+					require.EqualError(t, err, expectedError)
+					require.Equal(t, InvalidBoolArg{}, result)
+				})
+			})
 		})
 	})
 
-	t.Run("custom type with factory function and multiple arguments", func(t *testing.T) {
-		t.Run("fills using factory function with multiple arguments when zero value", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{})
-			require.NoError(t, err)
-
-			expected := CustomVO{privateField: "prefix-42-suffix"}
-			require.Equal(t, expected, foo.CustomVOMultiArgs)
-		})
-
-		t.Run("does not modify existing custom value with multi-arg factory", func(t *testing.T) {
-			custom := CustomVO{privateField: "existing value"}
-			foo, err := testfill.Fill(Foo{CustomVOMultiArgs: custom})
-			require.NoError(t, err)
-
-			require.Equal(t, custom, foo.CustomVOMultiArgs)
-		})
-	})
-
-	t.Run("time with factory function", func(t *testing.T) {
-		t.Run("fills using ParseDate factory with string argument", func(t *testing.T) {
-			foo, err := testfill.Fill(Foo{})
-			require.NoError(t, err)
-
-			expected := time.Date(2024, 12, 25, 0, 0, 0, 0, time.UTC)
-			require.Equal(t, expected, foo.TimeWithRFCFactory)
-		})
-
-		t.Run("does not modify existing date time value", func(t *testing.T) {
-			customTime := time.Date(2020, 6, 15, 12, 0, 0, 0, time.UTC)
-			foo, err := testfill.Fill(Foo{TimeWithRFCFactory: customTime})
-			require.NoError(t, err)
-
-			require.Equal(t, customTime, foo.TimeWithRFCFactory)
-		})
-	})
-
-	t.Run("invalid struct types", func(t *testing.T) {
+	t.Run("invalid types", func(t *testing.T) {
 		t.Run("passing int returns error", func(t *testing.T) {
 			result, err := testfill.Fill(42)
 
@@ -531,159 +692,6 @@ func TestTestfill(t *testing.T) {
 
 			require.EqualError(t, err, "testfill: expected struct, got []int")
 			require.Nil(t, result)
-		})
-	})
-
-	t.Run("unsupported struct type", func(t *testing.T) {
-		type CustomStruct struct {
-			Field string
-		}
-		type UnsupportedStruct struct {
-			Value CustomStruct `testfill:"some_value"`
-		}
-
-		result, err := testfill.Fill(UnsupportedStruct{})
-
-		expectedError := "testfill: failed to set field Value: unsupported struct type testfill_test.CustomStruct"
-		require.EqualError(t, err, expectedError)
-		require.Equal(t, UnsupportedStruct{}, result)
-	})
-
-	t.Run("factory function error handling", func(t *testing.T) {
-		t.Run("when factory function panics returns error", func(t *testing.T) {
-			type PanicTest struct {
-				CustomVOWithPanic CustomVO `testfill:"factory:PanicFactory"`
-			}
-
-			result, err := testfill.Fill(PanicTest{})
-
-			expectedError := "testfill: failed to set field CustomVOWithPanic: factory function panicked: this factory always panics"
-			require.EqualError(t, err, expectedError)
-			require.Equal(t, PanicTest{}, result)
-		})
-
-		t.Run("unregistered factory function", func(t *testing.T) {
-			type UnregisteredFactory struct {
-				Value CustomVO `testfill:"factory:NonExistentFactory"`
-			}
-
-			result, err := testfill.Fill(UnregisteredFactory{})
-
-			expectedError := "testfill: failed to set field Value: factory function NonExistentFactory not found"
-			require.EqualError(t, err, expectedError)
-			require.Equal(t, UnregisteredFactory{}, result)
-		})
-
-		t.Run("wrong argument count", func(t *testing.T) {
-			testfill.RegisterFactory("NoArgsFactory", func() CustomVO {
-				return CustomVO{}
-			})
-
-			t.Run("too many arguments", func(t *testing.T) {
-				type TooManyArgs struct {
-					Value CustomVO `testfill:"factory:NoArgsFactory:extra:arg"`
-				}
-
-				result, err := testfill.Fill(TooManyArgs{})
-
-				expectedError := "testfill: failed to set field Value: factory function NoArgsFactory expects 0 arguments, got 2"
-				require.EqualError(t, err, expectedError)
-				require.Equal(t, TooManyArgs{}, result)
-			})
-
-			t.Run("too few arguments", func(t *testing.T) {
-				type TooFewArgs struct {
-					Value CustomVO `testfill:"factory:NewCustomVOWithArg"`
-				}
-
-				result, err := testfill.Fill(TooFewArgs{})
-
-				expectedError := "testfill: failed to set field Value: factory function NewCustomVOWithArg expects 1 arguments, got 0"
-				require.EqualError(t, err, expectedError)
-				require.Equal(t, TooFewArgs{}, result)
-			})
-		})
-
-		t.Run("wrong return type", func(t *testing.T) {
-			testfill.RegisterFactory("WrongReturnType", func() string {
-				return "not a CustomVO"
-			})
-
-			type WrongReturnType struct {
-				Value CustomVO `testfill:"factory:WrongReturnType"`
-			}
-
-			result, err := testfill.Fill(WrongReturnType{})
-
-			expectedError := "testfill: failed to set field Value: factory function WrongReturnType returns string, but field expects testfill_test.CustomVO"
-			require.EqualError(t, err, expectedError)
-			require.Equal(t, WrongReturnType{}, result)
-		})
-
-		t.Run("multiple return values", func(t *testing.T) {
-			testfill.RegisterFactory("MultipleReturns", func() (CustomVO, error) {
-				return CustomVO{}, nil
-			})
-
-			type MultipleReturns struct {
-				Value CustomVO `testfill:"factory:MultipleReturns"`
-			}
-
-			result, err := testfill.Fill(MultipleReturns{})
-
-			expectedError := "testfill: failed to set field Value: factory function MultipleReturns must return exactly one value"
-			require.EqualError(t, err, expectedError)
-			require.Equal(t, MultipleReturns{}, result)
-		})
-
-		t.Run("argument conversion errors", func(t *testing.T) {
-			testfill.RegisterFactory("IntArgFactory", func(num int) CustomVO {
-				return CustomVO{}
-			})
-
-			t.Run("invalid int conversion", func(t *testing.T) {
-				type InvalidIntArg struct {
-					Value CustomVO `testfill:"factory:IntArgFactory:not_a_number"`
-				}
-
-				result, err := testfill.Fill(InvalidIntArg{})
-
-				expectedError := "testfill: failed to set field Value: factory function IntArgFactory argument 0: cannot convert \"not_a_number\" to int: strconv.ParseInt: parsing \"not_a_number\": invalid syntax"
-				require.EqualError(t, err, expectedError)
-				require.Equal(t, InvalidIntArg{}, result)
-			})
-
-			testfill.RegisterFactory("FloatArgFactory", func(num float64) CustomVO {
-				return CustomVO{}
-			})
-
-			t.Run("invalid float conversion", func(t *testing.T) {
-				type InvalidFloatArg struct {
-					Value CustomVO `testfill:"factory:FloatArgFactory:not_a_float"`
-				}
-
-				result, err := testfill.Fill(InvalidFloatArg{})
-
-				expectedError := "testfill: failed to set field Value: factory function FloatArgFactory argument 0: cannot convert \"not_a_float\" to float64: strconv.ParseFloat: parsing \"not_a_float\": invalid syntax"
-				require.EqualError(t, err, expectedError)
-				require.Equal(t, InvalidFloatArg{}, result)
-			})
-
-			testfill.RegisterFactory("BoolArgFactory", func(flag bool) CustomVO {
-				return CustomVO{}
-			})
-
-			t.Run("invalid bool conversion", func(t *testing.T) {
-				type InvalidBoolArg struct {
-					Value CustomVO `testfill:"factory:BoolArgFactory:not_a_bool"`
-				}
-
-				result, err := testfill.Fill(InvalidBoolArg{})
-
-				expectedError := "testfill: failed to set field Value: factory function BoolArgFactory argument 0: cannot convert \"not_a_bool\" to bool: strconv.ParseBool: parsing \"not_a_bool\": invalid syntax"
-				require.EqualError(t, err, expectedError)
-				require.Equal(t, InvalidBoolArg{}, result)
-			})
 		})
 	})
 }
