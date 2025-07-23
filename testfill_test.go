@@ -324,12 +324,23 @@ func TestTestfill(t *testing.T) {
 	})
 
 	t.Run("float", func(t *testing.T) {
-		t.Run("fills default value", func(t *testing.T) {
-			type FloatTest struct {
+		t.Run("float32 fills default value", func(t *testing.T) {
+			type Float32Test struct {
+				Value float32 `testfill:"99.99"`
+			}
+
+			result, err := testfill.Fill(Float32Test{})
+			require.NoError(t, err)
+
+			require.Equal(t, float32(99.99), result.Value)
+		})
+
+		t.Run("float64 fills default value", func(t *testing.T) {
+			type Float64Test struct {
 				Value float64 `testfill:"99.99"`
 			}
 
-			result, err := testfill.Fill(FloatTest{})
+			result, err := testfill.Fill(Float64Test{})
 			require.NoError(t, err)
 
 			require.Equal(t, 99.99, result.Value)
