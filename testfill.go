@@ -67,6 +67,17 @@ func Fill[T any](input T) (T, error) {
 	return resultValue.Interface().(T), nil
 }
 
+// MustFill is like Fill but panics on error.
+// Use this when you are certain the struct is valid and want to avoid error handling.
+func MustFill[T any](input T) T {
+	result, err := Fill(input)
+	if err != nil {
+		panic(err)
+	}
+
+	return result
+}
+
 // RegisterFactory registers a factory function that can be called from struct tags.
 // The function must return exactly one value that matches the field type.
 // Factory functions can accept string arguments that will be converted to the appropriate types.
