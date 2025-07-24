@@ -220,6 +220,39 @@ userMap2, _ := testfill.Fill(UserMap2{})
 // Result: {Users:map[alice:{Name:Jane Role:admin} bob:{Name:Bob Role:guest} charlie:{Name:John Role:user}]}
 ```
 
+#### Fill with Specific Variants
+
+Instead of using slices/maps with `variants:` tags, you can directly fill a single struct with a specific variant using `FillWithVariant`:
+
+```go
+type User struct {
+    Name string `testfill:"John" testfill_admin:"Jane" testfill_guest:"Bob"`
+    Age  int    `testfill:"25" testfill_admin:"30" testfill_guest:"35"`
+    Role string `testfill:"user" testfill_admin:"admin" testfill_guest:"guest"`
+}
+
+// Fill with default variant (same as Fill)
+defaultUser, _ := testfill.FillWithVariant(User{}, "")
+// Result: {Name:John Age:25 Role:user}
+
+// Fill with admin variant
+adminUser, _ := testfill.FillWithVariant(User{}, "admin")
+// Result: {Name:Jane Age:30 Role:admin}
+
+// Fill with guest variant
+guestUser, _ := testfill.FillWithVariant(User{}, "guest")
+// Result: {Name:Bob Age:35 Role:guest}
+
+// Panic-on-error version (like MustFill)
+adminUser := testfill.MustFillWithVariant(User{}, "admin")
+```
+
+**Behavior:**
+- Falls back to default `testfill` tag if variant doesn't exist for a field
+- Works with nested structs, pointers, factory functions, and all other features
+- Preserves existing non-zero field values
+- If variant name doesn't exist, uses default tags for all fields
+
 ### Time Values
 
 ```go

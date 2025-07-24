@@ -1872,4 +1872,47 @@ func TestTestfill(t *testing.T) {
 			}
 		})
 	})
+
+	t.Run("FillWithVariant", func(t *testing.T) {
+		type User struct {
+			Name string `testfill:"John" testfill_admin:"Jane" testfill_guest:"Bob"`
+			Age  int    `testfill:"25" testfill_admin:"30" testfill_guest:"35"`
+			Role string `testfill:"user" testfill_admin:"admin" testfill_guest:"guest"`
+		}
+
+		t.Run("fills with default variant when empty variant provided", func(t *testing.T) {
+			result, err := testfill.FillWithVariant(User{}, "")
+			require.NoError(t, err)
+
+			require.Equal(t, "John", result.Name)
+			require.Equal(t, 25, result.Age)
+			require.Equal(t, "user", result.Role)
+		})
+
+		t.Run("fills with variant", func(t *testing.T) {
+			result, err := testfill.FillWithVariant(User{}, "admin")
+			require.NoError(t, err)
+
+			require.Equal(t, "Jane", result.Name)
+			require.Equal(t, 30, result.Age)
+			require.Equal(t, "admin", result.Role)
+		})
+
+		t.Run("errors for non-struct input", func(t *testing.T) {
+			result, err := testfill.FillWithVariant(42, "admin")
+			require.EqualError(t, err, "testfill: expected struct, got int")
+			require.Equal(t, 0, result)
+		})
+
+		t.Run("errors for invalid tag value", func(t *testing.T) {
+			type InvalidTag struct {
+				Value int `testfill:"default" testfill_admin:"not_a_number"`
+			}
+
+			result, err := testfill.FillWithVariant(InvalidTag{}, "admin")
+			require.Error(t, err)
+			require.Contains(t, err.Error(), "cannot convert \"not_a_number\" to int")
+			require.Equal(t, InvalidTag{}, result)
+		})
+	})
 }

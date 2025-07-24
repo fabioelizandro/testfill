@@ -78,6 +78,41 @@ func MustFill[T any](input T) T {
 	return result
 }
 
+// FillWithVariant populates zero-valued fields in a struct based on testfill tags with a specific variant.
+// It takes a struct value and a variant name, returning a copy with fields filled according to their
+// variant-specific tags (e.g., testfill_admin) or falling back to default testfill tags.
+// Supports nested structs, pointers, slices, maps, and factory functions.
+func FillWithVariant[T any](input T, variant string) (T, error) {
+	var zero T
+	inputValue := reflect.ValueOf(input)
+	inputType := reflect.TypeOf(input)
+
+	if inputType.Kind() != reflect.Struct {
+		return zero, fmt.Errorf(ErrNotStruct, input)
+	}
+
+	// Create a copy to work with
+	resultValue := reflect.New(inputType).Elem()
+	resultValue.Set(inputValue)
+
+	if err := fillStructWithVariant(resultValue, variant); err != nil {
+		return zero, err
+	}
+
+	return resultValue.Interface().(T), nil
+}
+
+// MustFillWithVariant is like FillWithVariant but panics on error.
+// Use this when you are certain the struct is valid and want to avoid error handling.
+func MustFillWithVariant[T any](input T, variant string) T {
+	result, err := FillWithVariant(input, variant)
+	if err != nil {
+		panic(err)
+	}
+
+	return result
+}
+
 // RegisterFactory registers a factory function that can be called from struct tags.
 // The function must return exactly one value that matches the field type.
 // Factory functions can accept string arguments that will be converted to the appropriate types.
